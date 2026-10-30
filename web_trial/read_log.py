@@ -46,7 +46,7 @@ def render(job):
     output=[
         'DXF 견적프로그램 - 로컬 웹 DXF 읽기 진단 로그',
         '='*63,
-        '버전: V0.5.4',
+        '버전: V0.5.6',
         f'도면: {job.get("title", "")}',
         f'원본: {job.get("_source_display", "")}',
         f'시작: {datetime.fromtimestamp(started).strftime("%Y-%m-%d %H:%M:%S")}',
@@ -74,9 +74,9 @@ def render(job):
         if frames:
             output += ['', '[도곽 자동 판정]']
             for key,label in [('existing','기존 층 수'),('autoAdded','자동 추가'),('rectCandidates','사각 후보'),
-                              ('planTitles','평면도 제목 후보'),('unresolvedCount','판정 보류')]:
+                              ('planTitles','평면도 제목 후보'),('alternativeCount','동일 층 다른 도면 후보'),('unresolvedCount','판정 보류')]:
                 if key in frames:output.append(f'{label}: {frames[key]}')
-            for label,key in [('기존 지정','existingFrames'),('자동 판정','added'),('판정 보류','unresolved')]:
+            for label,key in [('기존 지정','existingFrames'),('자동 판정','added'),('다른 도면 후보','alternatives'),('사용자 확정','manualSelections'),('판정 보류','unresolved')]:
                 for item in frames.get(key) or []:
                     floors=', '.join(map(str,item.get('floors') or []))
                     output.append(f'  - {label}: {floors or "(층 미확정)"} · {item.get("title", "")}'

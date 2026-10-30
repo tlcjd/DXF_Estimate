@@ -366,12 +366,12 @@ class DXFJobs:
         self.lock = threading.RLock()
         self.job = None
 
-    def begin(self, source: Path, title: str, remove_after: bool, key: str):
+    def begin(self, source: Path, title: str, remove_after: bool, key: str, force: bool = False):
         started_perf = time.perf_counter()
         with self.lock:
             if self.job and self.job.get('state') == 'running':
                 raise ValueError('다른 DXF를 읽는 중입니다. 완료 후 다시 시도하세요.')
-            existing=load_index(key)
+            existing=None if force else load_index(key)
             if existing:
                 CATALOG.set_direct_cache(existing)
                 job={'id':uuid.uuid4().hex,'state':'done','message':'저장된 층별 캐시 재사용 · DXF 재분석 없음',
@@ -387,9 +387,11 @@ class DXFJobs:
                    'title':title,'stage':0,'error':'','result':None,'started':time.time(),
                    '_start_perf':started_perf, '_end_perf':None}
             read_log.start_log(job,source,cache_hit=False)
+            if force:
+                read_log.record(job, "강제 재분석 선택 · 기존 캐시가 있어도 새로 분석", stage=0)
             self.job=job
             read_log.persist(job)
-        threading.Thread(target=self._run,args=(job['id'],source,title,remove_after,key),daemon=True).start()
+        threading.Thread(target=self._run,args=(job['id'],source,title,remove_after,key,force),daemon=True).start()
         return {'id':job['id']}
 
     def update(self,id_,**kwargs):
@@ -417,9 +419,9 @@ class DXFJobs:
                                                   - self.job['_start_perf']), 1)
             return result
 
-    def _run(self,id_,path,title,remove_after,key):
+    def _run(self,id_,path,title,remove_after,key,force=False):
         try:
-            index, stats = import_dxf(path, title, key, lambda step,msg:self.update(id_,stage=step,message=msg))
+            index, stats = import_dxf(path, title, key, lambda step,msg:self.update(id_,stage=step,message=msg), force=force)
             CATALOG.set_direct_cache(index)
             self.update(id_,state='done',stage=100,message='층별 디스크 캐시 저장 완료',result=stats)
         except Exception as exc:
@@ -431,10 +433,35 @@ class DXFJobs:
                 try:path.unlink(missing_ok=True)
                 except OSError:pass
 
+def _choice_path(key):
+    if len(key)!=64 or any(c not in '0123456789abcdef' for c in key):
+        raise ValueError('캐시 식별자가 올바르지 않습니다.')
+    return CACHE_ROOT/'frame_choices'/f'{key}.json'
+
+
+def _read_choices(key):
+    path=_choice_path(key)
+    try:
+        raw=json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+        if not isinstance(raw,dict):return {}
+        return {str(f):list(rect) for f,rect in raw.items() if isinstance(rect,list) and len(rect)==4}
+    except (ValueError,OSError):return {}
+
+
+def _save_choices(key, choices):
+    target=_choice_path(key)
+    target.parent.mkdir(parents=True,exist_ok=True)
+    temp=target.with_suffix('.tmp.'+uuid.uuid4().hex)
+    try:
+        temp.write_text(json.dumps(choices,ensure_ascii=False,indent=2),encoding='utf-8')
+        os.replace(temp,target)
+    finally:temp.unlink(missing_ok=True)
+
+
 DXF_JOBS = DXFJobs()
 
 
-def import_dxf(path:Path, title:str, key:str, progress=None):
+def import_dxf(path:Path, title:str, key:str, progress=None, *, force=False):
     """V0.5: existing DXF core -> crop per floor -> persisted binary sidecars.
 
     The original DXF is read-only, and native CAD COM / Qt are not required.
@@ -449,7 +476,8 @@ def import_dxf(path:Path, title:str, key:str, progress=None):
     tell(10,'DXF 파일 읽는 중')
     doc=ezdxf.readfile(path);msp=doc.modelspace()
     tell(25,'평면도 도곽 및 층 제목 판정 중')
-    frames, frame_report = discover_plan_frames(msp, read_drawing_divisions(msp))
+    frames, frame_report = discover_plan_frames(msp, read_drawing_divisions(msp),
+                                                  preferred=_read_choices(key))
     tell(30, f"도곽 자동인식 {frame_report['autoAdded']}개 추가 · 기존 {frame_report['existing']}개 층")
     rects=floor_frame_rects(frames)
     crops=list({tuple(v) for v in rects.values()})
@@ -462,9 +490,11 @@ def import_dxf(path:Path, title:str, key:str, progress=None):
     if not segments and not annotations:
         raise ValueError('도면 선분이 없습니다. DXF에 외부참조가 포함되어 있는지 확인하세요.')
     tell(80, f'층별 벡터 분할·디스크 저장 준비 · 원본 {len(segments)+len(annotations):,} 선분')
-    index=write_cache(key,title,path,frames,rects,segments,annotations,texts,fills,extra,tell)
+    index=write_cache(key,title,path,frames,rects,segments,texts=texts,annotations=annotations,fills=fills,extra=extra,progress=tell,force=force)
     stats=index['stats']
-    if frame_report['autoAdded']:
+    if frame_report.get('manualSelections'):
+        stats['notice']=f"사용자가 선택한 도곽 {len(frame_report['manualSelections'])}개 적용"
+    elif frame_report['autoAdded']:
         stats['notice']=f"평면 도곽 {frame_report['autoAdded']}개 자동 판정 · 결과 확인 가능"
     elif frame_report['unresolvedCount']:
         stats['notice']=f"평면도 제목 {frame_report['unresolvedCount']}개는 도곽 확정 보류 · 결과 확인 필요"
@@ -491,9 +521,95 @@ class Handler(BaseHTTPRequestHandler):
     def respond(self,obj,status=200):self.send_bytes(tojson(obj),status=status)
     def do_POST(self):
         parsed=urlparse(self.path)
-        if parsed.path not in ('/api/dxf/upload','/api/dxf/open-path'):
+        if parsed.path not in ('/api/dxf/upload','/api/dxf/open-path','/api/dxf/cache/delete','/api/dxf/frame/choose','/api/dxf/frame/reset'):
             self.respond({'error':'지원하지 않는 요청'},404);return
         try:
+            if parsed.path=='/api/dxf/cache/delete':
+                if DXF_JOBS.job and DXF_JOBS.job.get('state')=='running':
+                    raise ValueError('DXF 분석 중에는 캐시를 삭제할 수 없습니다.')
+                with CATALOG.lock:
+                    index=CATALOG.direct_index
+                    if index is None:
+                        raise ValueError('삭제할 현재 DXF 캐시가 없습니다.')
+                    sig=str(index.get('signature') or '')
+                    if len(sig)!=64 or any(c not in '0123456789abcdef' for c in sig):
+                        raise ValueError('캐시 식별자가 올바르지 않습니다.')
+                    target=CACHE_ROOT/sig
+                    # Only delete generated disk caches under our own cache root.
+                    if target.exists():
+                        import shutil
+                        shutil.rmtree(target)
+                    CATALOG.direct_index=None
+                    CATALOG.direct_payload=None
+                    CATALOG.direct_title=''
+                    CATALOG.scene=None
+                    CATALOG.scene_key=None
+                    last=CACHE_ROOT/'last_opened.txt'
+                    if last.is_file() and last.read_text(encoding='ascii').strip()==sig:
+                        last.unlink()
+                self.respond({'deleted':True,'signature':sig})
+                return
+            if parsed.path=='/api/dxf/frame/reset':
+                if DXF_JOBS.job and DXF_JOBS.job.get('state')=='running':
+                    raise ValueError('DXF 분석 중에는 도곽 선택을 해제할 수 없습니다.')
+                with CATALOG.lock:index=CATALOG.direct_index
+                if not index:raise ValueError('현재 DXF가 없습니다.')
+                length=int(self.headers.get('Content-Length','0'))
+                if length<=0 or length>512:raise ValueError('요청이 올바르지 않습니다.')
+                data=json.loads(self.rfile.read(length).decode('utf-8'))
+                floor=str(data.get('floor') or '').strip()
+                key=str(index.get('signature') or '')
+                choices=_read_choices(key)
+                if floor not in choices:raise ValueError('사용자 지정된 도곽이 없습니다.')
+                del choices[floor]
+                _save_choices(key,choices)
+                source=Path(str(index.get('sourcePath') or ''))
+                if not source.is_file():
+                    self.respond({'needsUpload':True,'floor':floor},200);return
+                job=DXF_JOBS.begin(source,source.name,False,key,force=True)
+                self.respond(job,202)
+                return
+            if parsed.path=='/api/dxf/frame/choose':
+                if DXF_JOBS.job and DXF_JOBS.job.get('state')=='running':
+                    raise ValueError('DXF 분석 중에는 도곽을 변경할 수 없습니다.')
+                with CATALOG.lock:
+                    index=CATALOG.direct_index
+                if not index:raise ValueError('현재 열린 DXF가 없습니다.')
+                source=Path(str(index.get('sourcePath') or ''))
+                # Browser uploads are intentionally removed after analysis.
+                # If absent, record the choice and ask browser to re-upload the
+                # original File input; never keep a secret copy of the DXF.
+                needs_upload=not source.is_file() or source.suffix.lower()!='.dxf'
+                length=int(self.headers.get('Content-Length','0'))
+                if length<=0 or length>2048:raise ValueError('도곽 선택 요청이 올바르지 않습니다.')
+                req=json.loads(self.rfile.read(length).decode('utf-8'))
+                floor=str(req.get('floor') or '').strip()
+                b=req.get('rect')
+                if not floor or not isinstance(b,list) or len(b)!=4:
+                    raise ValueError('층과 도곽 좌표가 필요합니다.')
+                rect=[float(v) for v in b]
+                if not all(map(math.isfinite,rect)) or rect[2]<=rect[0] or rect[3]<=rect[1]:
+                    raise ValueError('도곽 범위가 올바르지 않습니다.')
+                report=(index.get('stats') or {}).get('frameDetection') or {}
+                pool=(report.get('alternatives') or [])+(report.get('added') or [])
+                def match(choice):
+                    r=choice.get('rect') or []
+                    return floor in (choice.get('floors') or []) and len(r)==4 and all(
+                        abs(float(a)-float(b))<=max(1,abs(float(a))*.00000001)
+                        for a,b in zip(r,rect))
+                if not any(match(choice) for choice in pool):
+                    raise ValueError('현재 판정 결과에 없는 도곽입니다. 다시 DXF를 읽어주세요.')
+                key=str(index.get('signature') or '')
+                choices=_read_choices(key)
+                choices[floor]=rect
+                _save_choices(key,choices)
+                if needs_upload:
+                    self.respond({'needsUpload':True,'floor':floor},200)
+                    return
+                job=DXF_JOBS.begin(source,source.name,False,key,force=True)
+                self.respond(job,202)
+                return
+            force=self.headers.get('X-Force-Rebuild','')=='1'
             if self.headers.get('Content-Type','').split(';')[0].strip()!='application/octet-stream':
                 raise ValueError('DXF 파일 전송 형식이 올바르지 않습니다.')
             length=int(self.headers.get('Content-Length','0'))
@@ -516,7 +632,7 @@ class Handler(BaseHTTPRequestHandler):
                             chunk=self.rfile.read(min(rest,1024*1024))
                             if not chunk:raise ValueError('파일 수신이 중단됐습니다.')
                             f.write(chunk);digest.update(chunk);rest-=len(chunk)
-                    result=DXF_JOBS.begin(target,filename,True,upload_signature(digest.hexdigest()))
+                    result=DXF_JOBS.begin(target,filename,True,upload_signature(digest.hexdigest()),force=force)
                 except Exception:
                     target.unlink(missing_ok=True);raise
             else:
@@ -524,7 +640,7 @@ class Handler(BaseHTTPRequestHandler):
                 path=Path(raw.strip().strip('"')).expanduser()
                 if path.suffix.lower()!='.dxf' or not path.is_file():
                     raise ValueError('PC에 존재하는 .dxf 파일의 전체 경로를 입력하세요.')
-                result=DXF_JOBS.begin(path,path.name,False,signature_for_path(path))
+                result=DXF_JOBS.begin(path,path.name,False,signature_for_path(path),force=force)
             self.respond(result,202)
         except Exception as exc:self.respond({'error':f'{type(exc).__name__}: {exc}'},400)
 

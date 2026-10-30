@@ -1,7 +1,0 @@
-PoC 0.2 PATCH
-1. Windows CMD UTF-8/LF launcher -> CRLF/ASCII BAT
-2. Choose first valid floor geometry cache instead of last filename
-3. Show actionable error if no stage-2 cache available
-4. No changes to existing CAD/project cache files
-
-Use a SEPARATE test folder. Do not overwrite desktop program.

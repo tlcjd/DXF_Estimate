@@ -42,3 +42,14 @@
 /* V0.5.4 — reading diagnostics, copy / TXT export */
 .dxfLogStatus{color:#82e6bb;font-size:10px;white-space:nowrap;flex-shrink:0;max-width:190px;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:1100px){.dxfLogStatus{max-width:130px}}
+
+
+/* V0.5.5: explicit cache lifecycle controls. */
+.forceRebuildLabel{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;color:#e1eafa;font-size:11px;cursor:pointer}
+.forceRebuildLabel input{accent-color:#3fa5ff;width:14px;height:14px;margin:0}
+.deleteCacheBtn{border-color:#795661;color:#edbac1;background:#2d2430}
+.deleteCacheBtn:hover{background:#51303e}
+
+/* V0.5.6: review/select alternative frame without replacing native CAD data */
+.frameRow .smallAction{white-space:nowrap;flex:none;padding:6px 10px;border:1px solid #618bad;border-radius:5px;background:#233e51;color:#e9f3fa;cursor:pointer;font-size:12px}
+.frameRow .smallAction:hover{background:#315875}

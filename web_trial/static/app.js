@@ -439,7 +439,7 @@ async function openDxf(){
   busy(true,'DXF 업로드 중');dxfProgress(`${file.name} · 로컬 서버에 전달 중`);
   try{
     const response=await fetch('/api/dxf/upload',{
-      method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file
+      method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name),'X-Force-Rebuild':$('dxfForceRebuild').checked?'1':'0'},body:file
     });
     const job=await response.json();if(!response.ok)throw new Error(job.error||`HTTP ${response.status}`);
     await watchDxfJob(job,file.name,clickStartedAt);
@@ -455,11 +455,31 @@ async function openDxfPath(){
   busy(true,'로컬 DXF 읽기 준비');dxfProgress('원본을 복사하지 않고 PC 경로에서 직접 분석합니다.');
   try{
     const response=await fetch('/api/dxf/open-path',{
-      method:'POST',headers:{'Content-Type':'application/octet-stream'},body:new TextEncoder().encode(pathname)
+      method:'POST',headers:{'Content-Type':'application/octet-stream','X-Force-Rebuild':$('dxfForceRebuild').checked?'1':'0'},body:new TextEncoder().encode(pathname)
     });
     const job=await response.json();if(!response.ok)throw new Error(job.error||`HTTP ${response.status}`);
     await watchDxfJob(job,pathname.split(/[\\/]/).pop(),clickStartedAt);
   }catch(e){busy(false);dxfProgress('실패: '+e.message,true);message('DXF 읽기 실패: '+e.message,true)}
+  finally{button.disabled=false}
+}
+
+async function deleteCurrentDxfCache(){
+  if(state.id!=='direct'){
+    logNotice('삭제할 현재 DXF 캐시가 없습니다.',true);return;
+  }
+  if(!window.confirm('현재 DXF의 층별 디스크 캐시를 삭제하시겠습니까?\n원본 DXF·기존 프로젝트 파일은 삭제하지 않습니다.'))return;
+  const button=$('btnDeleteDxfCache');button.disabled=true;
+  try{
+    const response=await fetch('/api/dxf/cache/delete',{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:new Uint8Array([1])});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||'캐시 삭제 실패');
+    const select=$('fileSelect'), option=select.querySelector('option[value="direct"]');
+    if(option)option.remove();
+    select.value='demo';state.importedTitle='';
+    await chooseFile();
+    dxfProgress('현재 DXF 캐시 삭제 완료 · 다시 DXF 읽기를 누르면 새로 분석합니다.');
+    logNotice('현재 캐시 삭제 완료');
+  }catch(e){logNotice('캐시 삭제 실패: '+e.message,true)}
   finally{button.disabled=false}
 }
 
@@ -469,8 +489,8 @@ async function showFrameInfo(){
   $('frameSummary').textContent='도곽 판정 결과 불러오는 중…';
   try{
     const result=await request('/api/dxf/frames');
-    const added=result.added||[], unresolved=result.unresolved||[];
-    $('frameSummary').textContent=`기존 층 ${result.existing||0}개 · 자동 추가 ${result.autoAdded||0}개 · 사각 후보 ${result.rectCandidates||0}개 · 평면도 제목 ${result.planTitles||0}개 · 보류 ${result.unresolvedCount||0}개`;
+    const added=result.added||[], unresolved=result.unresolved||[], alternatives=result.alternatives||[];
+    $('frameSummary').textContent=`기존 층 ${result.existing||0}개 · 자동 추가 ${result.autoAdded||0}개 · 사각 후보 ${result.rectCandidates||0}개 · 평면도 제목 ${result.planTitles||0}개 · 동일 층 다른 도면 ${result.alternativeCount||0}개 · 보류 ${result.unresolvedCount||0}개`;
     function row(title,desc,status,uncertain=false){
       const el=document.createElement('div');el.className='frameRow';
       const left=document.createElement('div');
@@ -483,8 +503,68 @@ async function showFrameInfo(){
     if(!added.length && !unresolved.length && !old.length)row('자동 판정 없음','기존 도곽 레이어 지정 결과만 사용했거나 평면도 제목을 찾지 못했습니다.','기존 유지');
     for(const f of old)row((f.floors||[]).join(', '),`${f.title} · 기존 도곽 지정`, '기존 유지');
     for(const f of added)row((f.floors||[]).join(', '),`${f.title} · ${f.source} · ${f.layer} · [${f.rect?.map(x=>Math.round(x)).join(', ')}]`,f.confidence||'자동');
+    for(const f of result.manualSelections||[]){
+      const floor=f.floors?.[0];if(!floor)continue;
+      const el=document.createElement('div');el.className='frameRow';
+      const left=document.createElement('div');
+      const label=document.createElement('strong');label.textContent=floor+' · 사용자 확정';
+      const detail=document.createElement('small');detail.textContent=`${f.title} · [${(f.rect||[]).map(Math.round).join(', ')}]`;
+      const button=document.createElement('button');button.className='smallAction';button.textContent='자동으로 복귀';
+      button.addEventListener('click',()=>resetDetectedFrame(floor));
+      left.append(label,detail);el.append(left,button);container.append(el);
+    }
+    for(const f of alternatives){
+      const floors=f.floors||[];
+      const el=document.createElement('div');el.className='frameRow';
+      const left=document.createElement('div');const strong=document.createElement('strong');
+      strong.textContent=floors.join(', ')||f.title;
+      const detail=document.createElement('small');detail.textContent=`${f.title} · ${f.reason} · [${(f.rect||[]).map(Math.round).join(', ')}]`;
+      left.append(strong,detail);
+      const button=document.createElement('button');button.className='smallAction';button.textContent='이 도곽 선택';
+      button.title='이 도곽을 해당 층의 기준으로 저장하고 DXF를 다시 분석합니다.';
+      button.addEventListener('click',()=>chooseDetectedFrame(f));
+      el.append(left,button);container.append(el);
+    }
     for(const f of unresolved)row((f.floors||[]).join(', ')||f.title,`${f.title} · ${f.reason}`,'판정 보류',true);
   }catch(e){$('frameSummary').textContent='도곽 결과를 읽을 수 없습니다: '+e.message;}
+}
+
+async function resetDetectedFrame(floor){
+  if(!window.confirm(`${floor}의 수동 도곽 지정을 해제하고 자동판정으로 다시 분석하시겠습니까?`))return;
+  $('frameModal').classList.remove('visible');busy(true,'도곽 자동판정 복원');
+  try{
+    const response=await fetch('/api/dxf/frame/reset',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({floor})});
+    const data=await response.json();if(!response.ok)throw new Error(data.error||'복원 실패');
+    if(data.needsUpload){
+      if(!$('dxfFile').files[0])throw new Error('원본 DXF 파일을 다시 선택한 후 강제 재분석해 주세요.');
+      const before=$('dxfForceRebuild').checked;$('dxfForceRebuild').checked=true;
+      try{await openDxf()}finally{$('dxfForceRebuild').checked=before}
+    }else await watchDxfJob(data,state.importedTitle||'DXF',performance.now());
+  }catch(e){busy(false);dxfProgress('자동판정 복원 실패: '+e.message,true);message('자동판정 복원 실패: '+e.message,true)}
+}
+
+async function chooseDetectedFrame(frame){
+  if(!frame?.floors?.length||!frame?.rect)return;
+  const floor=frame.floors[0];
+  if(!window.confirm(`${floor}: 선택한 도곽으로 다시 분석하시겠습니까?\n분석이 성공하면 층별 캐시가 교체됩니다.`))return;
+  const start=performance.now();
+  $('frameModal').classList.remove('visible');
+  busy(true,'선택 도곽 기준 재분석');
+  try{
+    const response=await fetch('/api/dxf/frame/choose',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({floor,rect:frame.rect})
+    });
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||'도곽 선택 실패');
+    if(data.needsUpload){
+      if(!$('dxfFile').files[0])throw new Error('원본 파일을 다시 선택한 뒤 같은 도곽을 선택해 주세요.');
+      const force=$('dxfForceRebuild').checked;
+      $('dxfForceRebuild').checked=true;
+      try{await openDxf()}finally{$('dxfForceRebuild').checked=force}
+    }else await watchDxfJob(data,state.importedTitle||'DXF',start);
+  }catch(e){busy(false);dxfProgress('도곽 선택 실패: '+e.message,true);message('도곽 선택 실패: '+e.message,true)}
 }
 
 function bindUI(){
@@ -494,6 +574,7 @@ function bindUI(){
   $('btnFrameInfo').addEventListener('click',showFrameInfo);
   $('btnCopyLog').addEventListener('click',copyReadLog);
   $('btnSaveLog').addEventListener('click',saveReadLog);
+  $('btnDeleteDxfCache').addEventListener('click',deleteCurrentDxfCache);
   $('closeFrameInfo').addEventListener('click',()=> $('frameModal').classList.remove('visible'));
   $('frameModal').addEventListener('click',e=>{if(e.target===$('frameModal'))$('frameModal').classList.remove('visible')});
   $('dxfLocalPath').addEventListener('keydown',e=>{if(e.key==='Enter')openDxfPath()});

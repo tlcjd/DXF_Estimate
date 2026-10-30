@@ -15,7 +15,7 @@ import uuid
 from collections import OrderedDict
 from pathlib import Path
 
-CACHE_VERSION = 6
+CACHE_VERSION = 7
 LINE_STRUCT = struct.Struct('<4f4B')  # 20 bytes, compatible with V0.4 WebGL view
 ATTR_STRUCT = struct.Struct('<QHH')   # 12 bytes: source handle, block table, entity table
 CHUNK_LINES = 2048
@@ -173,14 +173,14 @@ class FloorWriter:
         return {'name':self.name,'directory':self.folder.name,'segments':offset,'texts':len(self.texts),'fills':len(self.fills)}
 
 
-def write_cache(key, title, path, frames, rects, segments, annotations, texts, fills, extra, progress=None):
+def write_cache(key, title, path, frames, rects, segments, annotations, texts, fills, extra, progress=None, *, force=False):
     """Crop original geometry into files without duplicating lists per floor."""
     from app.rooms.background_source_cache import _clip_line, _filter_texts, _filter_fills
     tell=progress or (lambda step,msg:None)
     CACHE_ROOT.mkdir(parents=True, exist_ok=True)
     final=CACHE_ROOT/key
     existing=load_index(key)
-    if existing:return existing
+    if existing and not force:return existing
     working=CACHE_ROOT/(key+'.building.'+uuid.uuid4().hex)
     working.mkdir(parents=True,exist_ok=False)
     try:
@@ -276,8 +276,21 @@ def write_cache(key, title, path, frames, rects, segments, annotations, texts, f
               'created':time.time(),'floors':summaries,'stats':stats,'spatialFallback':fallback}
         (working/'index.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding='utf-8')
         (working/'COMPLETED').write_text('OK\n',encoding='ascii')
-        if final.exists():shutil.rmtree(final)  # only a validated own cache folder, never user DXF
-        working.rename(final)
+        # Keep the previous cache until the new cache is fully built and validated.
+        # Same-volume directory renames make replacement fast, even for large caches.
+        backup = CACHE_ROOT / (key + '.old.' + uuid.uuid4().hex)
+        try:
+            if final.exists():
+                final.rename(backup)
+            try:
+                working.rename(final)
+            except Exception:
+                if backup.exists() and not final.exists():
+                    backup.rename(final)
+                raise
+        finally:
+            if backup.exists() and final.exists():
+                shutil.rmtree(backup, ignore_errors=True)
         meta['_folder']=str(final)
         return meta
     except Exception:
