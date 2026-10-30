@@ -7,7 +7,7 @@ const state = {
   white:false,gray:false,showText:true,showFills:true,renderer:'webgl',lineWidth:1.4,
   zoom:1,tx:0,ty:0,drag:null,selected:null,renderPending:false,rendererError:'',lastDraw:0,
   cpuPaths:null,version:0, gl:null, glProgram:null, glBuffer:null, glUniforms:null,
-  loadedInfo:null, root:'', importedTitle:''
+  loadedInfo:null, root:'', importedTitle:'', solo:null, ctrlDown:false
 };
 
 async function request(path, type='json') {
@@ -63,7 +63,7 @@ async function chooseFile(){
 }
 async function chooseFloor(){
   const id=state.id,floor=$('floorSelect').value,version=++state.version;
-  state.floor=floor;
+  state.floor=floor;setSolo(null);
   busy(true,'층별 벡터 로딩 중');
   try{
     const t0=performance.now();
@@ -87,6 +87,19 @@ async function chooseFloor(){
   }catch(e){alert('도면 표시 실패: '+e.message);console.error(e)}
   finally{if(version===state.version)busy(false)}
 }
+/* Ctrl을 누르는 동안 선택 객체의 레이어만 임시 표시. 레이어 체크 상태(state.hidden)는 바꾸지 않는다. */
+function layerHidden(name){return state.solo!==null?name!==state.solo:state.hidden.has(name)}
+function hiddenLayerNames(){return state.solo!==null?(state.scene?.layers||[]).map(l=>l.name).filter(n=>n!==state.solo):[...state.hidden]}
+function setSolo(layer){
+  if(state.solo===layer)return;
+  state.solo=layer;
+  const on=layer!==null;
+  $('soloBadge').classList.toggle('visible',on);
+  if(on)$('soloLayer').textContent=layer;
+  for(const row of $('layerList').querySelectorAll('.layerItem'))row.classList.toggle('solo',on&&row.dataset.layer===layer);
+  $('layerList').classList.toggle('soloing',on);
+  scheduleDraw();
+}
 function rebuildLayerList(){
   const list=$('layerList');list.innerHTML='';
   const q=$('layerSearch').value.toLocaleLowerCase();
@@ -95,7 +108,7 @@ function rebuildLayerList(){
   const frag=document.createDocumentFragment();
   for(const l of layers){
     if(!l.name.toLocaleLowerCase().includes(q))continue;
-    const row=document.createElement('label');row.className='layerItem'+(state.hidden.has(l.name)?' hidden':'');
+    const row=document.createElement('label');row.className='layerItem'+(state.hidden.has(l.name)?' hidden':'')+(state.solo===l.name?' solo':'');row.dataset.layer=l.name;
     const cb=document.createElement('input');cb.type='checkbox';cb.checked=!state.hidden.has(l.name);
     cb.addEventListener('change',()=>{if(cb.checked)state.hidden.delete(l.name);else state.hidden.add(l.name);row.classList.toggle('hidden',!cb.checked);scheduleDraw()});
     const color=document.createElement('span');color.className='colorMark';
@@ -181,7 +194,7 @@ function drawGL(){
   gl.uniform2f(u.pan,state.tx,state.ty);gl.uniform2f(u.size,w,h);gl.uniform1f(u.zoom,state.zoom);
   gl.uniform1f(u.width,state.lineWidth);gl.uniform1i(u.gray,state.gray?1:0);gl.uniform1i(u.light,state.white?1:0);
   for(const layer of state.scene.layers){
-    if(state.hidden.has(layer.name)||!layer.count)continue;
+    if(layerHidden(layer.name)||!layer.count)continue;
     gl.vertexAttribPointer(0,4,gl.FLOAT,false,20,layer.offset*20);
     gl.vertexAttribPointer(1,4,gl.UNSIGNED_BYTE,true,20,layer.offset*20+16);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP,0,4,layer.count);
@@ -225,7 +238,7 @@ function drawCPU(){
   ctx.lineWidth=state.lineWidth/state.zoom;
   ctx.lineCap='butt';ctx.lineJoin='miter';
   for(const group of state.cpuPaths){
-    if(state.hidden.has(group.name))continue;
+    if(layerHidden(group.name))continue;
     for(const item of group.paths){ctx.strokeStyle=colors(item.rgb);ctx.stroke(item.path)}
   }
 }
@@ -253,7 +266,7 @@ function drawFills(){
   if(!state.showFills||!state.scene)return;
   ctx.setTransform(dpr*state.zoom,0,0,-dpr*state.zoom,dpr*state.tx,dpr*state.ty);
   for(const item of state.fills){
-    if(state.hidden.has(item.layer))continue;
+    if(layerHidden(item.layer))continue;
     const pts=item.points||[];if(pts.length<3)continue;
     const path=new Path2D();path.moveTo(pts[0][0],pts[0][1]);
     for(let i=1;i<pts.length;i++)path.lineTo(pts[i][0],pts[i][1]);path.closePath();
@@ -269,7 +282,7 @@ function drawText(){
   if(state.showText){
     ctx.textBaseline='alphabetic';
     for(const item of state.texts){
-      if(state.hidden.has(item.layer))continue;
+      if(layerHidden(item.layer))continue;
       const p=worldToScreen(item.x,item.y);
       let fontSize=item.height*state.zoom;
       if(fontSize<3.3||p.x< -200||p.x>cw+200||p.y< -200||p.y>ch+200)continue;
@@ -323,7 +336,8 @@ function showSelection(s){
   state.selected=s;
   if(!s){resetSelection();scheduleDraw();return}
   $('selectedInfo').parentElement.classList.add('picked');
-  $('selectedInfo').innerHTML='<h3>선분 선택됨</h3><p>기존 CAD 캐시의 객체 정보 (읽기 전용)</p>';
+  $('selectedInfo').innerHTML='<h3>선분 선택됨</h3><p><kbd>Ctrl</kbd>을 누르고 있으면 이 레이어만 표시됩니다</p>';
+  if(state.ctrlDown)setSolo(s.layer);
   const rows=[['구분',s.kind],['레이어',s.layer],['길이',fmt(s.length)+' mm'],['객체',s.entity],['블록',s.block||'—'],['핸들',s.handle||'—']];
   $('selectionDetails').innerHTML='';
   for(const [k,v] of rows){const d=document.createElement('div');d.className='detail';const a=document.createElement('span');a.textContent=k;const b=document.createElement('b');b.textContent=String(v);b.title=String(v);d.append(a,b);$('selectionDetails').append(d)}
@@ -334,7 +348,7 @@ async function pickAt(x,y){
   const p=screenToWorld(x,y);
   if(state.id==='demo'){
     const d=state.geom;let best=null,dist=Infinity;
-    for(const l of state.scene.layers){if(state.hidden.has(l.name))continue;
+    for(const l of state.scene.layers){if(layerHidden(l.name))continue;
       for(let i=l.offset;i<l.offset+l.count;i++){
         const o=i*20,ax=d.getFloat32(o,true),ay=d.getFloat32(o+4,true),bx=d.getFloat32(o+8,true),by=d.getFloat32(o+12,true);
         const vx=bx-ax,vy=by-ay,t=Math.max(0,Math.min(1,((p.x-ax)*vx+(p.y-ay)*vy)/Math.max(1,vx*vx+vy*vy)));
@@ -345,7 +359,7 @@ async function pickAt(x,y){
     showSelection(dist<Math.pow(10/state.zoom,2)?best:null);return;
   }
   try{
-    const hidden=[...state.hidden].join('\x1f');
+    const hidden=hiddenLayerNames().join('\x1f');
     const q=params({id:state.id,floor:state.floor,x:p.x,y:p.y,tol:Math.min(1500,Math.max(5,10/state.zoom)),hidden});
     const data=await request('/api/pick?'+q);showSelection(data.selected);
   }catch(e){message('객체 선택 실패: '+e.message,true)}
@@ -626,6 +640,14 @@ function bindUI(){
   wrap.addEventListener('pointerup',e=>{if(!state.drag)return;const dist=state.drag.dist;state.drag=null;wrap.classList.remove('dragging');if(dist<=4&&$('btnSelect').classList.contains('active')){const rect=wrap.getBoundingClientRect();pickAt(e.clientX-rect.left,e.clientY-rect.top)}});
   wrap.addEventListener('pointercancel',()=>{state.drag=null;wrap.classList.remove('dragging')});
   wrap.addEventListener('wheel',e=>{e.preventDefault();if(!state.scene)return;const rect=wrap.getBoundingClientRect();const px=e.clientX-rect.left,py=e.clientY-rect.top;const world=screenToWorld(px,py);const newZoom=Math.min(.5,Math.max(1e-7,state.zoom*Math.exp(-e.deltaY*.0013)));state.zoom=newZoom;state.tx=px-world.x*newZoom;state.ty=py+world.y*newZoom;scheduleDraw()},{passive:false});
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Control')return;
+    state.ctrlDown=true;
+    if(!e.repeat&&state.selected&&!(e.target instanceof Element&&e.target.matches('input,select,textarea')))setSolo(state.selected.layer);
+  });
+  const endSolo=()=>{state.ctrlDown=false;setSolo(null)};
+  document.addEventListener('keyup',e=>{if(e.key==='Control')endSolo()});
+  window.addEventListener('blur',endSolo);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){for(const m of document.querySelectorAll('.modalBackdrop.visible'))m.classList.remove('visible');return}if(e.target.matches('input,select'))return;if(e.key.toLowerCase()==='f')fitView()});
   new ResizeObserver(()=>scheduleDraw()).observe(wrap);
 }

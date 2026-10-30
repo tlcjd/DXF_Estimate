@@ -92,7 +92,8 @@
       <div class="canvasWrap" id="canvasWrap">
         <div id="gridHint" class="gridHint">CAD VECTORS · LOCAL DXF</div>
         <canvas id="fillCanvas"></canvas><canvas id="glCanvas"></canvas><canvas id="cpuCanvas"></canvas><canvas id="textCanvas"></canvas>
-        <div id="zoomHelp"><kbd>휠</kbd> 확대·축소 <kbd>드래그</kbd> 이동 <kbd>클릭</kbd> 선택 <kbd>F</kbd> 전체</div>
+        <div id="soloBadge" class="soloBadge" aria-live="polite"><svg class="ic"><use href="#i-layers"/></svg><span>레이어 단독</span><b id="soloLayer"></b><small>Ctrl을 떼면 복귀</small></div>
+        <div id="zoomHelp"><kbd>휠</kbd> 확대·축소 <kbd>드래그</kbd> 이동 <kbd>클릭</kbd> 선택 <kbd>Ctrl</kbd> 선택 레이어만 <kbd>F</kbd> 전체</div>
         <div id="busy" class="busy"><div class="busyCard"><div class="spinner"></div><strong>벡터 데이터 불러오는 중</strong><div class="progress" id="busyProgress"><i></i></div><small>DXF 분석 중에도 기존 도면은 수정하지 않습니다</small></div></div>
       </div>
       <div class="viewportBottom">
@@ -130,6 +131,6 @@
   </div>
 </div>
 
-<div class="modalBackdrop" id="helpModal"><div class="modal"><div class="modalHead"><strong>오프라인 웹 뷰어 시험판</strong><button id="closeHelp" class="iconBtn" aria-label="닫기"><svg class="ic"><use href="#i-x"/></svg></button></div><p>DXF 파일을 직접 읽거나 기존 2단 원본 벡터 캐시를 표시하는 웹 시험판입니다. 인터넷·외부 서버는 사용하지 않습니다.</p><p><b>휠</b> 확대/축소 · <b>드래그</b> 이동 · <b>클릭</b> 선분 정보 · <b>F</b> 전체 보기. WebGL2/Canvas2D를 변경해 성능 차이를 확인하세요.</p><p>DXF 직접 읽기는 층별 로컬 캐시로 저장해 재사용하지만 CAD COM 실시간 연동, 실 편집, 프로젝트 저장은 이번 <b>읽기 전용 PoC 범위 밖</b>입니다. 원본 데스크톱 프로그램은 그대로 실행할 수 있습니다.</p><button id="closeHelp2" class="btn primary block">확인</button></div></div>
+<div class="modalBackdrop" id="helpModal"><div class="modal"><div class="modalHead"><strong>오프라인 웹 뷰어 시험판</strong><button id="closeHelp" class="iconBtn" aria-label="닫기"><svg class="ic"><use href="#i-x"/></svg></button></div><p>DXF 파일을 직접 읽거나 기존 2단 원본 벡터 캐시를 표시하는 웹 시험판입니다. 인터넷·외부 서버는 사용하지 않습니다.</p><p><b>휠</b> 확대/축소 · <b>드래그</b> 이동 · <b>클릭</b> 선분 정보 · <b>Ctrl</b>(누르고 있는 동안) 선택한 선분의 레이어만 표시 · <b>F</b> 전체 보기. WebGL2/Canvas2D를 변경해 성능 차이를 확인하세요.</p><p>DXF 직접 읽기는 층별 로컬 캐시로 저장해 재사용하지만 CAD COM 실시간 연동, 실 편집, 프로젝트 저장은 이번 <b>읽기 전용 PoC 범위 밖</b>입니다. 원본 데스크톱 프로그램은 그대로 실행할 수 있습니다.</p><button id="closeHelp2" class="btn primary block">확인</button></div></div>
 <div class="modalBackdrop" id="frameModal"><div class="modal frameModalPanel"><div class="modalHead"><strong>도곽 자동인식 결과</strong><button id="closeFrameInfo" class="iconBtn" aria-label="닫기"><svg class="ic"><use href="#i-x"/></svg></button></div><p id="frameSummary" class="frameSummary">DXF를 먼저 읽어주세요.</p><div id="frameDetails" class="frameDetails"></div><p class="frameCaution">기존 지정 도곽을 기본 유지합니다. 지정이 없어도 제목·사각형을 찾아 층을 구성하며 같은 층의 다른 도면 후보는 아래에서 선택할 수 있습니다. 추정 도곽은 확인이 필요합니다.</p></div></div>
 <script src="/app.js"></script></body></html>

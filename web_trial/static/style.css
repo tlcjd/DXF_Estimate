@@ -164,6 +164,15 @@ input[type=range]{accent-color:var(--accent);width:80px}
 .canvasWrap.dragging{cursor:grabbing}
 .canvasWrap>canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .gridHint{display:none;position:absolute;top:12px;left:14px;z-index:4;color:#4c6380;font-size:9px;letter-spacing:2px;pointer-events:none;opacity:.7}
+.soloBadge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:6;display:none;align-items:center;gap:8px;max-width:80%;
+  padding:6px 14px;border-radius:18px;background:#1c2433f2;border:1px solid #ffcf6966;box-shadow:0 6px 24px #0007;color:var(--text-2);font-size:11.5px;pointer-events:none;white-space:nowrap}
+.soloBadge.visible{display:flex}
+.soloBadge .ic{color:#ffcf69}
+.soloBadge b{color:#ffcf69;overflow:hidden;text-overflow:ellipsis}
+.soloBadge small{color:var(--muted);font-size:10.5px}
+.layerList.soloing .layerItem{opacity:.35}
+.layerList.soloing .layerItem.solo{opacity:1;background:#ffcf6914;box-shadow:inset 2px 0 0 #ffcf69}
+.selectedInfo kbd{font:inherit;font-weight:700;color:var(--text);background:var(--panel-3);border:1px solid var(--line-2);border-radius:4px;padding:0 4px}
 #zoomHelp{opacity:.8;position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;
   background:#12161dd9;backdrop-filter:blur(6px);color:var(--text-2);border:1px solid var(--line-2);border-radius:16px;
   padding:5px 12px;font-size:10.5px;pointer-events:none;white-space:nowrap}
