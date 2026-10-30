@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 실행 중 생성되는 로컬 데이터 (캐시·로그·경로)
+web_trial/data/
+web_trial/root_path.txt
+settings.ini
+사용자파일/
+
+# 도면·배포 파일
+*.dxf
+*.dwg
+*.bak
+*.zip
+
+# 에디터/OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

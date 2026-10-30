@@ -1,0 +1,49 @@
+﻿로컬 크롬 기반 전환 시험용 소스 묶음
+
+이 ZIP은 기존 데스크톱 프로그램의 소스 사본입니다. 웹 전환 구현은 포함하지 않습니다.
+원본: D:\P\Estimate\DXF_견적프로그램 작성
+실제 창 제목/README 기준: V0.24.12. 전달된 V0.24.13 선명 표시 옵션은 현재 소스에서 확인되지 않았습니다.
+
+포함
+- main.py 및 app/ 전체 Python 소스
+- requirements.txt: 의존 패키지 목록
+- settings.ini: 기존 화면/레이어/산식 등 설정 원본
+- README.md: 기존 설명
+- 기존엔진으로_실행.bat: 원본 폴더의 .venv Python으로 이 사본의 main.py 실행
+- 참고리습/WCNT: 향후 부호 인식 참고용, 프로그램에 아직 연결되지 않음
+- SHA256SUMS.txt: 파일 검증 목록
+
+실행
+1. 별도 시험 폴더에 압축을 해제합니다.
+2. 기존엔진으로_실행.bat를 실행하면 기존 .venv의 패키지를 사용합니다.
+3. 기존 .venv 경로가 다르면 배치파일의 DXF_EXISTING_PYTHON만 수정합니다.
+4. 이 배치파일은 패키지 설치/업데이트를 수행하지 않습니다.
+5. CAD 직접 연동 시험에는 기존 PC의 ZWCAD가 필요합니다.
+
+제외 및 기존 자료 재사용
+- .venv, __pycache__, 이전 ZIP/백업, 샘플 도면, 캐시/로그, 프로젝트 데이터 제외
+- settings2.ini는 최근 작업/프로젝트 기록이므로 제외
+- 사용자파일 폴더는 첫 실행 시 사본 폴더 아래 생성됩니다.
+- 기존 데이터가 필요하면 원본 사용자파일/ 아래 필요한 하위 폴더를 시험 폴더의 사용자파일/로 복사합니다.
+  재료마감: 재료마감_리스트.json
+  재료사전: 재료문자_사전.json
+  블록라이브러리: DXF_ROOM_TAG.dwg 등
+  프로젝트, 도면, 벽마감지정: 실제 프로젝트 재현이 필요할 때만 복사
+- 기존 사용자파일을 자동으로 공유하도록 소스를 변경하지 않았습니다.
+- settings.ini에는 기존 로컬 경로가 포함되어 있으므로 필요에 따라 변경합니다.
+
+전환 시 코드 위치
+- app/main_window.py: 기능 연결/프로젝트/CAD 연동
+- app/cad/bridge.py: Windows COM 엔진, 유지/재사용 대상
+- app/worker.py: 백그라운드 도면 처리
+- app/rooms/core.py: 도면/실/블록/XCLIP 해석
+- app/rooms/background_source_cache.py: 원본 벡터 및 DXF 창호 후보
+- app/rooms/background_program_cache.py: 최적화/필터
+- app/rooms/preview.py: Qt 도면 렌더러, 웹 전환 시 대체 대상
+- app/rooms/widget.py: 실/벽/창호 편집과 상태 관리
+- app/window_tab.py: 창호 마스터/층별 개수/산식
+- app/core/paths.py: 데이터 경로, 현재 소스 폴더 기준
+
+검사 범위
+Python 전체 소스 구문 검사, ZIP CRC 및 SHA256 검증.
+GUI 실행/CAD 연동/실제 도면 인식 검증은 수행하지 않았습니다.
