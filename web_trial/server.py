@@ -29,10 +29,8 @@ ROOT = Path(__file__).resolve().parent
 APP_ROOT = ROOT.parent
 STATIC = ROOT / 'static'
 if str(APP_ROOT) not in sys.path: sys.path.insert(0, str(APP_ROOT))
-MAX_DXF_BYTES = 300 * 1024 * 1024
 MAX_CACHE_FILES = 350
 MAX_CACHE_BYTES = 1024 * 1024 * 1024
-MAX_LINES = 2_000_000
 
 
 def tojson(v):
@@ -204,16 +202,16 @@ class Catalog:
                 rect = (0,0,100000,100000)
             rect = tuple(clean_num(v) for v in rect)
             ox,oy = rect[:2]
-            lines = list(rawfloor.get('segments') or [])
-            annotation = list(rawfloor.get('annotation_segments') or [])
-            if len(lines)+len(annotation) > MAX_LINES:
-                raise ValueError('안전 제한: 200만 선을 초과합니다.')
-            grouping = defaultdict(list)
-            for flag, coll in ((0,lines), (1,annotation)):
+            # 큰 도면에서도 원본 선분 목록을 통째로 복제하지 않는다.
+            lines = rawfloor.get('segments') or ()
+            annotation = rawfloor.get('annotation_segments') or ()
+            # (선분, 종류) 튜플을 선분마다 생성하지 않고 레이어별 참조만 모은다.
+            grouping = defaultdict(lambda: ([], []))
+            for flag, coll in ((0, lines), (1, annotation)):
                 for seg in coll:
                     try:
-                        if len(seg)<4:continue
-                        grouping[layer_of_segment(seg)].append((seg,flag))
+                        if len(seg) < 4: continue
+                        grouping[layer_of_segment(seg)][flag].append(seg)
                     except Exception:
                         continue
             text_by_layer = defaultdict(list)
@@ -246,21 +244,23 @@ class Catalog:
             index = []
             offset = 0
             for layer in sorted(set(grouping)|set(text_by_layer)|{f['layer'] for f in allfills}):
-                entries = grouping[layer]
-                idx = {'name':layer,'count':len(entries),'offset':offset,'texts':len(text_by_layer[layer])}
-                for seg,flag in entries:
-                    try:
-                        rgb=color3(seg[4:7]) if len(seg)>=7 else (170,170,170)
-                        buf.extend(struct.pack('<4f4B', clean_num(seg[0])-ox, clean_num(seg[1])-oy,
-                                               clean_num(seg[2])-ox, clean_num(seg[3])-oy,*rgb, flag))
-                    except (OverflowError,struct.error):
-                        buf.extend(struct.pack('<4f4B',0,0,0,0,100,100,100,flag))
-                offset+=len(entries)
+                normal, annotated = grouping[layer]
+                count = len(normal) + len(annotated)
+                idx = {'name':layer,'count':count,'offset':offset,'texts':len(text_by_layer[layer])}
+                for flag, entries in ((0, normal), (1, annotated)):
+                    for seg in entries:
+                        try:
+                            rgb=color3(seg[4:7]) if len(seg)>=7 else (170,170,170)
+                            buf.extend(struct.pack('<4f4B', clean_num(seg[0])-ox, clean_num(seg[1])-oy,
+                                                   clean_num(seg[2])-ox, clean_num(seg[3])-oy,*rgb, flag))
+                        except (OverflowError,struct.error):
+                            buf.extend(struct.pack('<4f4B',0,0,0,0,100,100,100,flag))
+                offset += count
                 index.append(idx)
             scene = {'id':id_, 'floor':floor,'rect':[0,0,rect[2]-ox,rect[3]-oy],
                      'origin':[ox,oy], 'layers':index, 'totalLines':offset,
                      'totalTexts':len(alltext),'totalFills':len(allfills),
-                     'bin':bytes(buf),'texts':alltext,'fills':allfills, 'raw':rawfloor,
+                     'bin':buf,'texts':alltext,'fills':allfills, 'raw':rawfloor,
                      'built':time.perf_counter()}
             self.scene_key=key
             self.scene=scene
@@ -399,26 +399,33 @@ def import_dxf(path:Path, title:str, progress=None):
     annotations=extra.get('annotation_segments') or []
     texts=extra.get('texts') or []
     fills=extra.get('fills') or []
-    if len(segments)+len(annotations)>MAX_LINES:
-        raise ValueError(f'시험판 안전 제한 초과: 선분 {len(segments)+len(annotations):,}개 (최대 {MAX_LINES:,}개)')
     tell(80,'층별 벡터 분리 중')
     floors = build_floor_vectors(segments,frames,texts,annotations,rooms=None,fills=fills) if rects else {}
     # Non-standard DXF without our custom frame layer still needs a usable drawing view.
     if not floors or not any((v.get('segments') or v.get('annotation_segments') or v.get('texts') or v.get('fills')) for v in floors.values()):
-        xs=[];ys=[]
-        for seg in segments+annotations:
-            try:
-                xs.extend((float(seg[0]),float(seg[2])));ys.extend((float(seg[1]),float(seg[3])))
-            except (IndexError,ValueError,TypeError):pass
+        # 전체도면 좌표범위도 스트리밍으로 계산 (수백만 선의 좌표 배열 생성 방지).
+        min_x=min_y=float('inf')
+        max_x=max_y=float('-inf')
+        def absorb(x,y):
+            nonlocal min_x,min_y,max_x,max_y
+            x,y=float(x),float(y)
+            if not (math.isfinite(x) and math.isfinite(y)):return
+            min_x=min(min_x,x);max_x=max(max_x,x)
+            min_y=min(min_y,y);max_y=max(max_y,y)
+        for coll in (segments, annotations):
+            for seg in coll:
+                try:absorb(seg[0],seg[1]);absorb(seg[2],seg[3])
+                except (IndexError,ValueError,TypeError,OverflowError):pass
         for text in texts:
-            try:xs.append(float(text['x']));ys.append(float(text['y']))
-            except (ValueError,TypeError,KeyError):pass
+            try:absorb(text['x'],text['y'])
+            except (ValueError,TypeError,KeyError,OverflowError):pass
         for fill in fills:
-            for x,y in fill.get('points') or []:
-                xs.append(float(x));ys.append(float(y))
-        if not xs or not ys:
+            for pt in fill.get('points') or []:
+                try:absorb(pt[0],pt[1])
+                except (ValueError,TypeError,IndexError,OverflowError):pass
+        if not math.isfinite(min_x) or not math.isfinite(min_y):
             raise ValueError('표시할 벡터 도형이 없습니다. DXF가 빈 파일이거나 외부참조가 미포함일 수 있습니다.')
-        rect=(min(xs),min(ys),max(xs),max(ys))
+        rect=(min_x,min_y,max_x,max_y)
         pad=max(100.0,(max(rect[2]-rect[0],rect[3]-rect[1]))*.01)
         floors={'전체':{'crop_rect':(rect[0]-pad,rect[1]-pad,rect[2]+pad,rect[3]+pad),
                         'crop_source':'all_geometry','segments':segments,
@@ -475,8 +482,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('Content-Type','').split(';')[0].strip()!='application/octet-stream':
                 raise ValueError('DXF 파일 전송 형식이 올바르지 않습니다.')
             length=int(self.headers.get('Content-Length','0'))
-            if length <= 0 or length > MAX_DXF_BYTES:
-                raise ValueError('DXF 업로드 크기는 1바이트~300MB만 지원합니다.')
+            if length <= 0:
+                raise ValueError('DXF 업로드 파일이 비어 있습니다.')
             if DXF_JOBS.job and DXF_JOBS.job.get('state')=='running':
                 raise ValueError('이미 DXF 분석 중입니다.')
             if parsed.path=='/api/dxf/upload':
@@ -501,7 +508,6 @@ class Handler(BaseHTTPRequestHandler):
                 path=Path(raw.strip().strip('"')).expanduser()
                 if path.suffix.lower()!='.dxf' or not path.is_file():
                     raise ValueError('PC에 존재하는 .dxf 파일의 전체 경로를 입력하세요.')
-                if path.stat().st_size>MAX_DXF_BYTES:raise ValueError('300MB 이하 DXF만 지원합니다.')
                 result=DXF_JOBS.begin(path,path.name,False)
             self.respond(result,202)
         except Exception as exc:self.respond({'error':f'{type(exc).__name__}: {exc}'},400)
