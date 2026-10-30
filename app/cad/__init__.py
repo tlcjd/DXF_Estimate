@@ -1,3 +1,1 @@
-from .bridge import CadBridge, CadConnectionError, CadDocumentInfo
-
-__all__ = ["CadBridge", "CadConnectionError", "CadDocumentInfo"]
+# Local web DXF parser uses app.cad.colors only; no COM bridge imported.
