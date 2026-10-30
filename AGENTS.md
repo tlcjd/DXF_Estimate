@@ -15,7 +15,7 @@
   (`app/rooms/core.py`의 `read_cad_background()`, `read_drawing_divisions()`,
   `app/rooms/background_source_cache.py`의 도곽/클리핑 보조).
 - `web_trial/` — `server.py`(HTTP API·DXF 작업), `disk_cache.py`(층별 캐시, `CACHE_VERSION`),
-  `auto_frames.py`(도곽 자동인식), `read_log.py`(읽기 로그), `browser_window.py`(앱 창),
+  `auto_frames.py`(도곽 자동인식), `read_log.py`(읽기 로그), `browser_window.py`(앱 창), `file_dialog.py`(DXF 열기 창),
   `static/`(`index.html`, `style.css`, `app.js`).
 - 버전별 변경 내역은 `README.md`에 누적 기록합니다.
 
@@ -46,6 +46,7 @@ python web_trial/test_auto_mixed_v056.py
 python web_trial/test_cache_controls.py
 python web_trial/test_dxf_import.py
 python web_trial/test_large_cache.py
+python web_trial/test_file_browse.py
 python -m unittest web_trial.test_browser_window web_trial.test_read_log
 ```
 

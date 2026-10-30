@@ -39,8 +39,7 @@ button:disabled{opacity:.45;cursor:default}
 .shell{height:100vh;display:flex;flex-direction:column;min-height:520px}
 
 /* ---------- shared controls ---------- */
-select,.rootInput,.pathField,.sideSearch{
-  background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--radius);color:var(--text)}
+select,.rootInput,  background:var(--panel-2);border:1px solid var(--line-2);border-radius:var(--radius);color:var(--text)}
 select{height:30px;padding:0 26px 0 10px;font-size:12px;appearance:none;-webkit-appearance:none;cursor:pointer;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237a8494' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat;background-position:right 9px center}
@@ -87,14 +86,6 @@ select option{background:#171c24}
   background:var(--panel);border-bottom:1px solid var(--line)}
 .dxfGroup{display:flex;align-items:center;gap:8px;min-width:0}
 .groupLabel{font-weight:700;letter-spacing:.8px;color:var(--accent);font-size:10.5px}
-.dxfbar input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.dxfSelected{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
-.dxfSelected.has{color:var(--text)}
-.localOpen{flex:1 1 360px;min-width:260px;max-width:620px}
-.pathField{display:flex;align-items:center;gap:7px;height:30px;padding:0 10px;flex:1;min-width:150px;color:var(--muted);cursor:text}
-.pathField:focus-within{border-color:var(--accent)}
-.pathField input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:12px}
-.pathField input::placeholder{color:#5f6876}
 .jobStatus{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:8px;overflow:hidden}
 .jobStatus>.ic{width:13px;height:13px;color:var(--muted)}
 #dxfJobStatus{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-size:11px}
@@ -274,7 +265,6 @@ input[type=range]{accent-color:var(--accent);width:80px}
   .widthCtl .toolLabel{display:none}
   .diag .btn span{display:none}
   .diag .btn{padding:0 8px}
-  .dxfSelected{max-width:120px}
 }
 @media(max-width:1050px){
   .inspector{display:none}

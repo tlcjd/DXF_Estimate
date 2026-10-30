@@ -14,6 +14,37 @@ Codex·Claude가 **교대로** 작업하면서 다음 작업자에게 넘기는 
 
 ---
 
+## 2026-10-30 · Claude · DXF 열기 버튼 하나로 통합 (업로드·경로칸 제거)
+
+**한 일**
+- 사용자 요청: "DXF 파일 선택"과 "경로 열기"가 두 개일 필요 없음, 경로칸도 필요 없음 → 버튼 하나로.
+- 배경: 브라우저는 실제 파일 경로를 주지 않아 업로드(전체 복사)만 가능했고, 큰 도면 때문에 경로 직접 열기가 따로 붙어 있었음.
+  로컬 앱이므로 서버가 Windows 파일 선택 창을 직접 띄워 원본 경로를 받도록 변경.
+- `web_trial/file_dialog.py`(신규): `ask_dxf_path(initial_dir)` — PowerShell `OpenFileDialog`(STA, TopMost 소유자 폼으로 Chrome 앱 창 앞에 표시,
+  스크립트는 `-EncodedCommand` UTF-16, 출력 UTF-8로 한글 경로 안전). Windows 외에는 tkinter. 동시에 두 개 창 열림 방지(Lock).
+- `server.py`: `POST /api/dxf/browse` {force, carryChoices} — 창 띄움 → 취소 시 `{canceled:true}` → `.dxf` 검증 → `signature_for_path`로
+  기존 경로 읽기와 같은 `DXF_JOBS.begin()`. 초기 폴더는 현재 캐시의 `sourcePath` 폴더.
+  `carryChoices`: 업로드 캐시(원본 위치 없음)에서 저장한 도곽 선택(`frame_choices/<업로드키>.json`)을 경로 캐시 키로 복사.
+- `app.js`: `openDxf()`/`openDxfPath()` 삭제 → `browseDxf({force,carryChoices})`. 도곽 선택/복귀의 `needsUpload` 분기는 안내 후 `browseDxf({force:true,carryChoices:true})`.
+- `index.html`/`style.css`: 파일 입력·선택 파일명·DXF 읽기·경로칸·경로 열기 제거, `#btnBrowseDxf` 추가. 관련 CSS 정리.
+- 서버의 `/api/dxf/upload`, `/api/dxf/open-path`는 호환·테스트용으로 유지(화면에서는 사용 안 함).
+
+**검증한 것**
+- `test_file_browse.py`(신규) PASS: 취소, DXF 외 파일 거절, 경로 직접 읽기·경로 캐시 생성, 직전 폴더에서 열기, 같은 파일 캐시 재사용,
+  업로드 캐시 도곽 선택 이어받기(force 재분석), 중복 창 차단, 실제 PowerShell 스크립트로 한글 경로 왕복(창 표시 부분만 대체).
+- 기존 테스트 7종 PASS. app.js가 쓰는 id 모두 HTML에 존재. 테스트 폴더 서버 재시작 후 화면 정상.
+
+**검증 못 한 것 / 주의**
+- 실제 파일 선택 창을 띄워 클릭하는 것은 사용자 PC 화면에 창이 뜨므로 하지 않음 → **사용자 실기 확인 필요**
+  (창이 Chrome 앱 창 앞에 뜨는지, 선택 후 읽기 진행되는지).
+- 파일 창이 열려 있는 동안 해당 HTTP 요청은 대기 상태(브라우저 fetch는 시간 제한 없음).
+- 서버 코드가 바뀌었으므로 테스트 폴더에서 이미 실행 중인 서버는 **재시작해야** 적용됨.
+
+**다음 작업자에게**
+- DXF를 여는 새 기능은 `browseDxf()`/`/api/dxf/browse`를 사용. 브라우저 업로드 경로는 더 이상 화면에서 쓰지 않음.
+
+---
+
 ## 2026-10-30 · Claude · Ctrl 누르는 동안 선택 레이어만 표시
 
 **한 일**

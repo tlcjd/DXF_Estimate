@@ -30,7 +30,7 @@ APP_ROOT = ROOT.parent
 STATIC = ROOT / 'static'
 if str(APP_ROOT) not in sys.path: sys.path.insert(0, str(APP_ROOT))
 from web_trial.browser_window import launch_app_window
-from web_trial import read_log
+from web_trial import read_log, file_dialog
 from web_trial.disk_cache import (CACHE_ROOT, upload_signature, signature_for_path,
     load_index, latest_index, write_cache, floor_scene, floor_order, pick_disk)
 MAX_CACHE_FILES = 350
@@ -521,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
     def respond(self,obj,status=200):self.send_bytes(tojson(obj),status=status)
     def do_POST(self):
         parsed=urlparse(self.path)
-        if parsed.path not in ('/api/dxf/upload','/api/dxf/open-path','/api/dxf/cache/delete','/api/dxf/frame/choose','/api/dxf/frame/reset'):
+        if parsed.path not in ('/api/dxf/browse','/api/dxf/upload','/api/dxf/open-path','/api/dxf/cache/delete','/api/dxf/frame/choose','/api/dxf/frame/reset'):
             self.respond({'error':'지원하지 않는 요청'},404);return
         try:
             if parsed.path=='/api/dxf/cache/delete':
@@ -548,6 +548,29 @@ class Handler(BaseHTTPRequestHandler):
                     if last.is_file() and last.read_text(encoding='ascii').strip()==sig:
                         last.unlink()
                 self.respond({'deleted':True,'signature':sig})
+                return
+            if parsed.path=='/api/dxf/browse':
+                # 브라우저 업로드(복사) 대신 PC의 파일 선택 창으로 원본 경로를 받아 직접 읽는다.
+                if DXF_JOBS.job and DXF_JOBS.job.get('state')=='running':
+                    raise ValueError('이미 DXF 분석 중입니다.')
+                length=int(self.headers.get('Content-Length','0'))
+                if length>512:raise ValueError('요청이 올바르지 않습니다.')
+                req=json.loads(self.rfile.read(length).decode('utf-8')) if length else {}
+                with CATALOG.lock:index=CATALOG.direct_index
+                last=Path(str((index or {}).get('sourcePath') or '')).parent
+                path=file_dialog.ask_dxf_path(str(last) if str(last)!='.' and last.is_dir() else '')
+                if path is None:
+                    self.respond({'canceled':True});return
+                if path.suffix.lower()!='.dxf' or not path.is_file():
+                    raise ValueError('DXF 파일만 열 수 있습니다.')
+                key=signature_for_path(path)
+                if req.get('carryChoices') and index:
+                    # 업로드 캐시에서 고른 도곽 선택을 같은 도면의 경로 캐시로 이어 받는다.
+                    old=_read_choices(str(index.get('signature') or ''))
+                    if old or _read_choices(key):_save_choices(key,old)
+                result=DXF_JOBS.begin(path,path.name,False,key,force=bool(req.get('force')))
+                result['title']=path.name
+                self.respond(result,202)
                 return
             if parsed.path=='/api/dxf/frame/reset':
                 if DXF_JOBS.job and DXF_JOBS.job.get('state')=='running':

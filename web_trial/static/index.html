@@ -39,16 +39,8 @@
   <section class="dxfbar">
     <div class="dxfGroup">
       <span class="groupLabel">DXF</span>
-      <label for="dxfFile" class="btn"><svg class="ic"><use href="#i-file"/></svg>파일 선택</label>
-      <input type="file" id="dxfFile" accept=".dxf"/>
-      <span id="dxfSelected" class="dxfSelected">선택된 DXF 없음</span>
-      <button id="btnOpenDxf" class="btn primary">DXF 읽기</button>
+      <button id="btnBrowseDxf" class="btn primary" title="PC에서 DXF 파일을 골라 바로 읽습니다 (복사·업로드 없음)"><svg class="ic"><use href="#i-folder"/></svg>DXF 열기</button>
       <label class="forceRebuildLabel" title="기존 층별 캐시가 있어도 DXF를 다시 분석해 새 캐시로 교체"><input type="checkbox" id="dxfForceRebuild"/>강제 재분석</label>
-    </div>
-    <div class="barDivider"></div>
-    <div class="dxfGroup localOpen" title="큰 DXF는 업로드 복사 없이 PC 경로에서 직접 엽니다">
-      <label for="dxfLocalPath" class="pathField"><svg class="ic"><use href="#i-folder"/></svg><input type="text" id="dxfLocalPath" placeholder="큰 DXF는 PC 경로로 직접 열기 · D:\도면\평면도.dxf" autocomplete="off"/></label>
-      <button id="btnOpenDxfPath" class="btn primary">경로 열기</button>
     </div>
     <div class="dxfGroup diag">
       <button id="btnFrameInfo" class="btn subtle" title="자동 도곽 판정 목록과 보류 사유 확인"><svg class="ic"><use href="#i-frame"/></svg><span>도곽 판정</span></button>
