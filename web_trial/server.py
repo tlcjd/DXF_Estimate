@@ -30,6 +30,7 @@ APP_ROOT = ROOT.parent
 STATIC = ROOT / 'static'
 if str(APP_ROOT) not in sys.path: sys.path.insert(0, str(APP_ROOT))
 from web_trial.browser_window import launch_app_window
+from web_trial import read_log
 from web_trial.disk_cache import (CACHE_ROOT, upload_signature, signature_for_path,
     load_index, latest_index, write_cache, floor_scene, floor_order, pick_disk)
 MAX_CACHE_FILES = 350
@@ -376,13 +377,18 @@ class DXFJobs:
                 job={'id':uuid.uuid4().hex,'state':'done','message':'저장된 층별 캐시 재사용 · DXF 재분석 없음',
                      'title':title,'stage':100,'error':'','result':dict(existing['stats'],cacheHit=True),
                      'started':time.time(), '_start_perf':started_perf, '_end_perf':time.perf_counter()}
+                read_log.start_log(job,source,cache_hit=True)
+                read_log.record(job,'기존 디스크 캐시 재사용 · DXF 재분석 없음',stage=100)
                 self.job=job
+                read_log.persist(job)
                 if remove_after:source.unlink(missing_ok=True)
                 return {'id':job['id']}
             job = {'id': uuid.uuid4().hex, 'state':'running', 'message':'DXF 읽기 준비',
                    'title':title,'stage':0,'error':'','result':None,'started':time.time(),
                    '_start_perf':started_perf, '_end_perf':None}
+            read_log.start_log(job,source,cache_hit=False)
             self.job=job
+            read_log.persist(job)
         threading.Thread(target=self._run,args=(job['id'],source,title,remove_after,key),daemon=True).start()
         return {'id':job['id']}
 
@@ -392,6 +398,14 @@ class DXFJobs:
                 if kwargs.get('state') in ('done', 'error'):
                     self.job['_end_perf'] = time.perf_counter()
                 self.job.update(kwargs)
+                if 'message' in kwargs:
+                    read_log.record(self.job,kwargs['message'],stage=kwargs.get('stage',self.job.get('stage')))
+                read_log.persist(self.job)
+
+    def log_text(self):
+        with self.lock:
+            if self.job:return read_log.render(self.job)
+            return read_log.latest_text()
 
     def status(self,id_):
         with self.lock:
@@ -410,7 +424,8 @@ class DXFJobs:
             self.update(id_,state='done',stage=100,message='층별 디스크 캐시 저장 완료',result=stats)
         except Exception as exc:
             print('[DXF 읽기 실패]', traceback.format_exc(),flush=True)
-            self.update(id_,state='error',message='DXF 읽기 실패',error=f'{type(exc).__name__}: {exc}')
+            self.update(id_,state='error',message='DXF 읽기 실패',error=f'{type(exc).__name__}: {exc}',
+                        _traceback=traceback.format_exc())
         finally:
             if remove_after:
                 try:path.unlink(missing_ok=True)
@@ -523,6 +538,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_bytes((STATIC/'app.js').read_bytes(),'text/javascript; charset=utf-8',compress=False);return
             if p.path=='/style.css':
                 self.send_bytes((STATIC/'style.css').read_bytes(),'text/css; charset=utf-8',compress=False);return
+            if p.path=='/api/dxf/log':
+                self.send_bytes(DXF_JOBS.log_text().encode('utf-8-sig'),
+                                'text/plain; charset=utf-8',compress=False);return
             if p.path=='/api/dxf/frames':
                 index=CATALOG.direct_index
                 if not index:raise ValueError('DXF 읽기 후 도곽 판정 결과를 확인하세요.')
