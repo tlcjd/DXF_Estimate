@@ -16,8 +16,12 @@ async function request(path, type='json') {
   return type==='bin' ? response.arrayBuffer() : response.json();
 }
 function params(obj){return new URLSearchParams(obj).toString()}
-function busy(on,msg){$('busy').classList.toggle('visible',on);if(msg)$('busy').querySelector('strong').textContent=msg}
-function message(msg,error=false){$('rootStatus').textContent=msg;$('rootStatus').style.color=error?'#ff979b':'#9db3cb'}
+function busy(on,msg,progress=null){
+  $('busy').classList.toggle('visible',on);if(msg)$('busy').querySelector('strong').textContent=msg;
+  const bar=$('busyProgress');bar.classList.toggle('visible',on&&progress!==null);
+  if(progress!==null)bar.firstElementChild.style.width=Math.max(0,Math.min(100,Number(progress)||0))+'%';
+}
+function message(msg,error=false){$('rootStatus').textContent=msg;$('rootStatus').classList.toggle('error',error)}
 
 async function scan(root,auto=false) {
   try {
@@ -95,6 +99,7 @@ function rebuildLayerList(){
     const cb=document.createElement('input');cb.type='checkbox';cb.checked=!state.hidden.has(l.name);
     cb.addEventListener('change',()=>{if(cb.checked)state.hidden.delete(l.name);else state.hidden.add(l.name);row.classList.toggle('hidden',!cb.checked);scheduleDraw()});
     const color=document.createElement('span');color.className='colorMark';
+    if(state.geom&&l.count){const o=l.offset*20+16;color.style.background=`rgb(${state.geom.getUint8(o)},${state.geom.getUint8(o+1)},${state.geom.getUint8(o+2)})`}
     const name=document.createElement('span');name.className='layerName';name.textContent=l.name;name.title=l.name;
     const count=document.createElement('span');count.className='layerCounter';count.textContent=fmt(l.count);
     row.append(cb,color,name,count);frag.appendChild(row);
@@ -313,10 +318,11 @@ function updateBackgroundButton(){
   btn.querySelector('span').textContent=state.white?'흰색':'검정';
 }
 function selectRenderer(mode){state.renderer=(mode==='webgl'&&state.gl)?'webgl':'canvas';$('rendererSelect').value=state.renderer;scheduleDraw()}
-function resetSelection(){$('selectedInfo').innerHTML='<h3>선분을 선택하세요</h3><p>도면 위의 선을 클릭하면 레이어·길이·블록 정보가 표시됩니다.</p>';$('selectionDetails').innerHTML='';}
+function resetSelection(){$('selectedInfo').parentElement.classList.remove('picked');$('selectedInfo').innerHTML='<h3>선분을 선택하세요</h3><p>도면 위의 선을 클릭하면 레이어·길이·블록 정보가 표시됩니다.</p>';$('selectionDetails').innerHTML='';}
 function showSelection(s){
   state.selected=s;
   if(!s){resetSelection();scheduleDraw();return}
+  $('selectedInfo').parentElement.classList.add('picked');
   $('selectedInfo').innerHTML='<h3>선분 선택됨</h3><p>기존 CAD 캐시의 객체 정보 (읽기 전용)</p>';
   const rows=[['구분',s.kind],['레이어',s.layer],['길이',fmt(s.length)+' mm'],['객체',s.entity],['블록',s.block||'—'],['핸들',s.handle||'—']];
   $('selectionDetails').innerHTML='';
@@ -354,7 +360,7 @@ async function getReadLog(){
 }
 function logNotice(message,isError=false){
   const el=$('dxfLogStatus');el.textContent=message;
-  el.style.color=isError?'#ff979b':'#82e6bb';
+  el.classList.toggle('error',isError);
 }
 async function copyReadLog(){
   try{
@@ -388,7 +394,7 @@ async function saveReadLog(){
 }
 
 function dxfProgress(text, error=false){
-  const el=$('dxfJobStatus'); el.textContent=text; el.style.color=error?'#ff9999':'#9ebdd6';
+  const el=$('dxfJobStatus'); el.textContent=text; el.title=text; el.classList.toggle('error',error);
 }
 function elapsedLabel(seconds){
   const total=Math.max(0,Math.floor(Number(seconds)||0));
@@ -424,7 +430,7 @@ async function watchDxfJob(job, filename, clickStartedAt){
         (info.emptyBlockRefs?.length?` · 빈 블록 ${info.emptyBlockRefs.join(', ')}`:''));
       return;
     }
-    dxfProgress(result.message);busy(true,result.message);
+    dxfProgress(result.message);busy(true,result.message,result.stage);
     showDxfElapsed('분석 중 '+parseTime);
     await sleep(400);
   }
@@ -488,7 +494,7 @@ async function showFrameInfo(){
 }
 
 function bindUI(){
-  $('dxfFile').addEventListener('change',e=>{$('dxfSelected').textContent=e.target.files[0]?.name||'선택된 DXF 없음'});
+  $('dxfFile').addEventListener('change',e=>{const f=e.target.files[0];$('dxfSelected').textContent=f?.name||'선택된 DXF 없음';$('dxfSelected').title=f?.name||'';$('dxfSelected').classList.toggle('has',!!f)});
   $('btnOpenDxf').addEventListener('click',openDxf);
   $('btnOpenDxfPath').addEventListener('click',openDxfPath);
   $('btnFrameInfo').addEventListener('click',showFrameInfo);
@@ -514,7 +520,7 @@ function bindUI(){
     updateBackgroundButton();
     scheduleDraw();
   });
-  $('btnGray').addEventListener('click',()=>{state.gray=!state.gray;$('btnGray').classList.toggle('active',state.gray);$('btnGray span').textContent=state.gray?'회색':'원색';scheduleDraw()});
+  $('btnGray').addEventListener('click',()=>{state.gray=!state.gray;$('btnGray').classList.toggle('active',state.gray);$('btnGray').querySelector('span').textContent=state.gray?'회색':'원색';scheduleDraw()});
   $('btnText').addEventListener('click',()=>{state.showText=!state.showText;$('btnText').classList.toggle('active',state.showText);scheduleDraw()});
   $('btnFills').addEventListener('click',()=>{state.showFills=!state.showFills;$('btnFills').classList.toggle('active',state.showFills);scheduleDraw()});
   const modal=$('helpModal');$('btnHelp').onclick=()=>modal.classList.add('visible');$('closeHelp').onclick=$('closeHelp2').onclick=()=>modal.classList.remove('visible');
@@ -530,7 +536,7 @@ function bindUI(){
   wrap.addEventListener('pointerup',e=>{if(!state.drag)return;const dist=state.drag.dist;state.drag=null;wrap.classList.remove('dragging');if(dist<=4&&$('btnSelect').classList.contains('active')){const rect=wrap.getBoundingClientRect();pickAt(e.clientX-rect.left,e.clientY-rect.top)}});
   wrap.addEventListener('pointercancel',()=>{state.drag=null;wrap.classList.remove('dragging')});
   wrap.addEventListener('wheel',e=>{e.preventDefault();if(!state.scene)return;const rect=wrap.getBoundingClientRect();const px=e.clientX-rect.left,py=e.clientY-rect.top;const world=screenToWorld(px,py);const newZoom=Math.min(.5,Math.max(1e-7,state.zoom*Math.exp(-e.deltaY*.0013)));state.zoom=newZoom;state.tx=px-world.x*newZoom;state.ty=py+world.y*newZoom;scheduleDraw()},{passive:false});
-  document.addEventListener('keydown',e=>{if(e.target.matches('input,select'))return;if(e.key.toLowerCase()==='f')fitView()});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){for(const m of document.querySelectorAll('.modalBackdrop.visible'))m.classList.remove('visible');return}if(e.target.matches('input,select'))return;if(e.key.toLowerCase()==='f')fitView()});
   new ResizeObserver(()=>scheduleDraw()).observe(wrap);
 }
 async function main(){
