@@ -21,3 +21,9 @@
 .localOpen button {white-space:nowrap}
 
 .dxfbar { height:auto; min-height:91px; padding:8px 18px; }
+
+/* V0.5.1: show DXF analysis/cache loading elapsed time next to progress. */
+.dxfElapsed{margin-left:auto;flex-shrink:0;color:#82e6bb;background:#13362f;
+  border:1px solid #275a4a;border-radius:5px;padding:6px 10px;
+  font-size:11px;font-weight:750;white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:1050px){.dxfElapsed{margin-left:auto}}

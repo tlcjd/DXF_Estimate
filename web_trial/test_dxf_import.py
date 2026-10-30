@@ -48,6 +48,12 @@ with tempfile.TemporaryDirectory() as tmp:
     result=DXF_JOBS.begin(dxf,dxf.name,False,key)
     status=DXF_JOBS.status(result['id'])
     assert status['state']=='done' and status['result']['cacheHit']
+    assert 'elapsedSeconds' in status and status['elapsedSeconds'] >= 0
+    # Finished jobs must report a fixed wall-clock duration (not keep increasing).
+    import time
+    finished_elapsed=status['elapsedSeconds']
+    time.sleep(.05)
+    assert DXF_JOBS.status(result['id'])['elapsedSeconds']==finished_elapsed
     # Fresh startup restores existing disk index without DXF file
     dxf.unlink()
     assert disk.latest_index()['signature']==key

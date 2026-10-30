@@ -349,19 +349,32 @@ async function pickAt(x,y){
 function dxfProgress(text, error=false){
   const el=$('dxfJobStatus'); el.textContent=text; el.style.color=error?'#ff9999':'#9ebdd6';
 }
+function elapsedLabel(seconds){
+  const total=Math.max(0,Math.floor(Number(seconds)||0));
+  return `${Math.floor(total/60)}분 ${String(total%60).padStart(2,'0')}초`;
+}
+function showDxfElapsed(text){$('dxfElapsed').textContent=text}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function watchDxfJob(job, filename){
+async function watchDxfJob(job, filename, clickStartedAt){
   for(;;){
     const result=await request('/api/dxf/job?'+params({id:job.id}));
-    dxfProgress(result.message);busy(true,result.message);
-    if(result.state==='error')throw new Error(result.error||'DXF 변환 실패');
+    const parseTime=elapsedLabel(result.elapsedSeconds);
+    if(result.state==='error'){
+      showDxfElapsed('실패 · 경과 '+parseTime);
+      throw new Error((result.error||'DXF 변환 실패')+' · 경과 '+parseTime);
+    }
     if(result.state==='done'){
+      const info=result.result||{};
+      dxfProgress(info.cacheHit?'기존 디스크 캐시에서 화면 불러오는 중':'DXF 분석 완료 · 선택층 표시 중');
+      showDxfElapsed(info.cacheHit?'캐시 확인 '+parseTime:'읽기·캐시 '+parseTime);
       state.importedTitle=filename;
       const select=$('fileSelect');let opt=select.querySelector('option[value="direct"]');
       if(!opt){opt=document.createElement('option');opt.value='direct';select.prepend(opt)}
       opt.textContent='DXF 층별 캐시 · '+filename;select.value='direct';
-      busy(false);await chooseFile();
-      const info=result.result||{};
+      await chooseFile();
+      busy(false);
+      const totalTime=elapsedLabel((performance.now()-clickStartedAt)/1000);
+      showDxfElapsed(`전체 ${totalTime} · ${info.cacheHit?'캐시 재사용':'DXF 읽기·캐시 '+parseTime}`);
       dxfProgress(`${info.cacheHit?'기존 디스크 캐시 재사용 (재분석 없음)':'층별 디스크 캐시 저장 완료'} · `+
         `${info.floors?.length||0}개 층/영역 · 원본 선 ${fmt(info.segments)}개`+
         (info.notice?' · '+info.notice:'')+
@@ -369,6 +382,8 @@ async function watchDxfJob(job, filename){
         (info.emptyBlockRefs?.length?` · 빈 블록 ${info.emptyBlockRefs.join(', ')}`:''));
       return;
     }
+    dxfProgress(result.message);busy(true,result.message);
+    showDxfElapsed('분석 중 '+parseTime);
     await sleep(400);
   }
 }
@@ -376,6 +391,8 @@ async function openDxf(){
   const file=$('dxfFile').files[0];
   if(!file){dxfProgress('먼저 .dxf 파일을 선택하세요.',true);return}
   if(!file.name.toLowerCase().endsWith('.dxf')){dxfProgress('DXF 파일만 지원합니다.',true);return}
+  const clickStartedAt=performance.now();
+  showDxfElapsed('업로드 중…');
   const button=$('btnOpenDxf');button.disabled=true;
   busy(true,'DXF 업로드 중');dxfProgress(`${file.name} · 로컬 서버에 전달 중`);
   try{
@@ -383,13 +400,15 @@ async function openDxf(){
       method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file
     });
     const job=await response.json();if(!response.ok)throw new Error(job.error||`HTTP ${response.status}`);
-    await watchDxfJob(job,file.name);
+    await watchDxfJob(job,file.name,clickStartedAt);
   }catch(e){busy(false);dxfProgress('실패: '+e.message,true);message('DXF 읽기 실패: '+e.message,true)}
   finally{button.disabled=false}
 }
 async function openDxfPath(){
   const pathname=$('dxfLocalPath').value.trim().replace(/^"|"$/g,'');
   if(!pathname.toLowerCase().endsWith('.dxf')){dxfProgress('PC의 DXF 파일 전체 경로를 입력하세요.',true);return}
+  const clickStartedAt=performance.now();
+  showDxfElapsed('분석 준비…');
   const button=$('btnOpenDxfPath');button.disabled=true;
   busy(true,'로컬 DXF 읽기 준비');dxfProgress('원본을 복사하지 않고 PC 경로에서 직접 분석합니다.');
   try{
@@ -397,7 +416,7 @@ async function openDxfPath(){
       method:'POST',headers:{'Content-Type':'application/octet-stream'},body:new TextEncoder().encode(pathname)
     });
     const job=await response.json();if(!response.ok)throw new Error(job.error||`HTTP ${response.status}`);
-    await watchDxfJob(job,pathname.split(/[\\/]/).pop());
+    await watchDxfJob(job,pathname.split(/[\\/]/).pop(),clickStartedAt);
   }catch(e){busy(false);dxfProgress('실패: '+e.message,true);message('DXF 읽기 실패: '+e.message,true)}
   finally{button.disabled=false}
 }

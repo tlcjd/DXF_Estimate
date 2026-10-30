@@ -20,7 +20,6 @@ import struct
 import sys
 import threading
 import time
-import webbrowser
 from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -30,6 +29,7 @@ ROOT = Path(__file__).resolve().parent
 APP_ROOT = ROOT.parent
 STATIC = ROOT / 'static'
 if str(APP_ROOT) not in sys.path: sys.path.insert(0, str(APP_ROOT))
+from web_trial.browser_window import launch_app_window
 from web_trial.disk_cache import (CACHE_ROOT, upload_signature, signature_for_path,
     load_index, latest_index, write_cache, floor_scene, floor_order, pick_disk)
 MAX_CACHE_FILES = 350
@@ -366,6 +366,7 @@ class DXFJobs:
         self.job = None
 
     def begin(self, source: Path, title: str, remove_after: bool, key: str):
+        started_perf = time.perf_counter()
         with self.lock:
             if self.job and self.job.get('state') == 'running':
                 raise ValueError('다른 DXF를 읽는 중입니다. 완료 후 다시 시도하세요.')
@@ -374,12 +375,13 @@ class DXFJobs:
                 CATALOG.set_direct_cache(existing)
                 job={'id':uuid.uuid4().hex,'state':'done','message':'저장된 층별 캐시 재사용 · DXF 재분석 없음',
                      'title':title,'stage':100,'error':'','result':dict(existing['stats'],cacheHit=True),
-                     'started':time.time()}
+                     'started':time.time(), '_start_perf':started_perf, '_end_perf':time.perf_counter()}
                 self.job=job
                 if remove_after:source.unlink(missing_ok=True)
                 return {'id':job['id']}
             job = {'id': uuid.uuid4().hex, 'state':'running', 'message':'DXF 읽기 준비',
-                   'title':title,'stage':0,'error':'','result':None,'started':time.time()}
+                   'title':title,'stage':0,'error':'','result':None,'started':time.time(),
+                   '_start_perf':started_perf, '_end_perf':None}
             self.job=job
         threading.Thread(target=self._run,args=(job['id'],source,title,remove_after,key),daemon=True).start()
         return {'id':job['id']}
@@ -387,13 +389,19 @@ class DXFJobs:
     def update(self,id_,**kwargs):
         with self.lock:
             if self.job and self.job['id']==id_:
+                if kwargs.get('state') in ('done', 'error'):
+                    self.job['_end_perf'] = time.perf_counter()
                 self.job.update(kwargs)
 
     def status(self,id_):
         with self.lock:
             if not self.job or self.job['id']!=id_:
                 raise ValueError('작업 기록을 찾을 수 없습니다.')
-            return dict(self.job)
+            result = {k:v for k,v in self.job.items() if not k.startswith('_')}
+            end = self.job['_end_perf']
+            result['elapsedSeconds'] = round(max(0.0, (end if end is not None else time.perf_counter())
+                                                  - self.job['_start_perf']), 1)
+            return result
 
     def _run(self,id_,path,title,remove_after,key):
         try:
@@ -569,7 +577,10 @@ def main():
     address=f'http://127.0.0.1:{srv.server_port}/'
     print('[실행]', address, '/ 외부 인터넷 연결 없음')
     print('종료: 이 창에서 Ctrl+C')
-    if not args.no_browser: threading.Timer(0.5,lambda:webbrowser.open(address)).start()
+    if not args.no_browser:
+        browser_timer = threading.Timer(0.5, launch_app_window, args=(address,))
+        browser_timer.daemon = True
+        browser_timer.start()
     try:srv.serve_forever()
     except KeyboardInterrupt:pass
     finally:srv.server_close()
