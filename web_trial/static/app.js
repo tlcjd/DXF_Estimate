@@ -611,7 +611,7 @@ function bindUI(){
   $('btnRestartConfirm').addEventListener('click',()=>location.reload());
   const modal=$('helpModal');$('btnHelp').onclick=()=>modal.classList.add('visible');$('closeHelp').onclick=$('closeHelp2').onclick=()=>modal.classList.remove('visible');
   const wrap=$('canvasWrap');
-  wrap.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==1)return;e.preventDefault();wrap.setPointerCapture(e.pointerId);state.drag={x:e.clientX,y:e.clientY,tx:state.tx,ty:state.ty,dist:0};wrap.classList.add('dragging')});
+  wrap.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==1)return;e.preventDefault();if(document.activeElement?.matches?.('input,select,textarea'))document.activeElement.blur();wrap.setPointerCapture(e.pointerId);state.drag={x:e.clientX,y:e.clientY,tx:state.tx,ty:state.ty,dist:0};wrap.classList.add('dragging')});
   wrap.addEventListener('pointermove',e=>{
     const rect=wrap.getBoundingClientRect(),p=screenToWorld(e.clientX-rect.left,e.clientY-rect.top);
     if(state.scene){$('coords').textContent=`X: ${fmt((p.x+state.scene.origin[0]).toFixed(1))} · Y: ${fmt((p.y+state.scene.origin[1]).toFixed(1))}`}
@@ -628,7 +628,7 @@ function bindUI(){
     if(!e.repeat&&state.selected&&!(e.target instanceof Element&&e.target.matches('input,select,textarea')))setSolo(state.selected.layer);
   });
   const endSolo=()=>{state.ctrlDown=false;setSolo(null)};
-  document.addEventListener('keyup',e=>{if(e.key==='Control')endSolo()});
+  document.addEventListener('keyup',e=>{if(e.key==='Control'&&!e.ctrlKey)endSolo()});
   window.addEventListener('blur',endSolo);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){for(const m of document.querySelectorAll('.modalBackdrop.visible'))m.classList.remove('visible');return}if(e.target.matches('input,select'))return;if(e.key.toLowerCase()==='f')fitView()});
   new ResizeObserver(()=>scheduleDraw()).observe(wrap);

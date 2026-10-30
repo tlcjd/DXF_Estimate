@@ -14,12 +14,25 @@ Codex·Claude가 **교대로** 작업하면서 다음 작업자에게 넘기는 
 
 ---
 
+## 2026-10-30 · Claude · Codex 검토 반영: Ctrl 단독 보기 포커스 버그 수정
+
+- Codex 지적 [P2] 수정: 입력칸·선택칸 사용 후 도면 선을 클릭하면 `pointerdown`의 `preventDefault()` 때문에 포커스가 입력칸에 남아
+  Ctrl keydown이 "입력 중"으로 무시되던 문제 → 도면 `pointerdown`에서 입력칸(input/select/textarea)에 포커스가 있으면 `blur()`.
+  실제 입력 중(입력칸에 커서가 있을 때)의 Ctrl 제외 규칙은 그대로 유지.
+- Codex 참고 사항 수정: 좌우 Ctrl을 함께 누르고 한쪽만 떼면 해제되던 문제 → `keyup`에서 `!e.ctrlKey`일 때만 해제.
+- 위치: `web_trial/static/app.js` bindUI의 canvasWrap `pointerdown`, `keyup` 핸들러. 화면 파일만 변경.
+- 사용자 확인 필요: 레이어 검색칸 클릭 → 도면 선 클릭 → Ctrl 누름 → 해당 레이어만 보이는지.
+
+---
+
 ## 2026-10-30 · Claude · 도곽 자동인식이 안 잡히는 원인 분석 (코드 변경 없음)
 
 - 대상: `효제동 평면변경안1.dxf`. 상세는 `docs/ROADMAP.md` "3-1. 도곽 자동인식 분석".
 - 핵심: 실제 도곽이 **블록(INSERT)** `에코플랜WB-SHEET 2016 (세로)` 56개인데 `auto_frames.py`는 모델공간 폴리선·LINE만 봄.
   평면도 제목 21개 중 20개가 이 블록 안에 있음. 또한 한 파일에 평면도 세트가 3벌이라 층마다 따로 고르면 세트가 섞임.
 - 다음 작업 제안: 블록 도곽 후보 추가 + 세트 단위 선택(+ 도면 위 표시). 사용자 승인 대기.
+
+---
 
 ## 2026-10-30 · Codex · UI·Ctrl 레이어 단독 표시 검토
 
