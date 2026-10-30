@@ -428,16 +428,19 @@ def import_dxf(path:Path, title:str, key:str, progress=None):
     except ImportError as exc:
         raise RuntimeError('DXF 읽기에는 ezdxf가 필요합니다. python -m pip install ezdxf') from exc
     from app.rooms.core import read_drawing_divisions, read_cad_background
+    from web_trial.auto_frames import discover_plan_frames
     from app.rooms.background_source_cache import floor_frame_rects
     tell=progress or (lambda step,msg:None)
     tell(10,'DXF 파일 읽는 중')
     doc=ezdxf.readfile(path);msp=doc.modelspace()
     tell(25,'평면도 도곽 및 층 제목 판정 중')
-    frames=read_drawing_divisions(msp)
+    frames, frame_report = discover_plan_frames(msp, read_drawing_divisions(msp))
+    tell(30, f"도곽 자동인식 {frame_report['autoAdded']}개 추가 · 기존 {frame_report['existing']}개 층")
     rects=floor_frame_rects(frames)
     crops=list({tuple(v) for v in rects.values()})
     tell(35,'기존 DXF 엔진으로 블록·XCLIP·선분 해석 중')
     segments,extra=read_cad_background(doc,crop_rects=crops or None)
+    extra['frame_detection'] = frame_report
     annotations=extra.get('annotation_segments') or []
     texts=extra.get('texts') or []
     fills=extra.get('fills') or []
@@ -446,8 +449,12 @@ def import_dxf(path:Path, title:str, key:str, progress=None):
     tell(80, f'층별 벡터 분할·디스크 저장 준비 · 원본 {len(segments)+len(annotations):,} 선분')
     index=write_cache(key,title,path,frames,rects,segments,annotations,texts,fills,extra,tell)
     stats=index['stats']
+    if frame_report['autoAdded']:
+        stats['notice']=f"평면 도곽 {frame_report['autoAdded']}개 자동 판정 · 결과 확인 가능"
+    elif frame_report['unresolvedCount']:
+        stats['notice']=f"평면도 제목 {frame_report['unresolvedCount']}개는 도곽 확정 보류 · 결과 확인 필요"
     if index.get('spatialFallback'):
-        stats['notice']='평면도 도곽/층 제목을 찾지 못해 공간별 영역으로 나눴습니다. 층 이름은 자동 추측하지 않습니다.'
+        stats['notice']='평면도 도곽/층 제목을 확정하지 못해 공간별 영역으로 나눴습니다. 층 이름은 자동 추측하지 않습니다.'
     tell(100,'층별 디스크 캐시 저장 완료 · 웹은 선택한 층만 불러옵니다')
     return index,stats
 
@@ -516,6 +523,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_bytes((STATIC/'app.js').read_bytes(),'text/javascript; charset=utf-8',compress=False);return
             if p.path=='/style.css':
                 self.send_bytes((STATIC/'style.css').read_bytes(),'text/css; charset=utf-8',compress=False);return
+            if p.path=='/api/dxf/frames':
+                index=CATALOG.direct_index
+                if not index:raise ValueError('DXF 읽기 후 도곽 판정 결과를 확인하세요.')
+                self.respond((index.get('stats') or {}).get('frameDetection') or {});return
             if p.path=='/api/dxf/job':
                 self.respond(DXF_JOBS.status(arg('id')));return
             if p.path=='/api/config':

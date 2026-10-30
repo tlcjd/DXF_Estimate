@@ -15,7 +15,7 @@ import uuid
 from collections import OrderedDict
 from pathlib import Path
 
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 LINE_STRUCT = struct.Struct('<4f4B')  # 20 bytes, compatible with V0.4 WebGL view
 ATTR_STRUCT = struct.Struct('<QHH')   # 12 bytes: source handle, block table, entity table
 CHUNK_LINES = 2048
@@ -266,7 +266,8 @@ def write_cache(key, title, path, frames, rects, segments, annotations, texts, f
                 summaries.append(dict(summary_by_writer[w],name=name))
         if not summaries:raise ValueError('도곽/영역 내부에 표시할 벡터가 없습니다.')
         diag=extra.get('block_diagnostic') or {}
-        stats={'title':title,'floors':[{'name':v['name'],'lines':v['segments'],'texts':v['texts'],'fills':v['fills']} for v in summaries],
+        frame_diag=extra.get('frame_detection') or {}
+        stats={'frameDetection':frame_diag,'title':title,'floors':[{'name':v['name'],'lines':v['segments'],'texts':v['texts'],'fills':v['fills']} for v in summaries],
                'frames':len(frames),'segments':len(segments),'texts':len(texts),
                'invisibleSkipped':diag.get('invisible_entity_skipped',0),
                'xclips':diag.get('xclip_insert_count',0),'unresolvedXrefs':[], 'emptyBlockRefs':[],

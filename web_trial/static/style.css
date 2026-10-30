@@ -27,3 +27,14 @@
   border:1px solid #275a4a;border-radius:5px;padding:6px 10px;
   font-size:11px;font-weight:750;white-space:nowrap;font-variant-numeric:tabular-nums}
 @media(max-width:1050px){.dxfElapsed{margin-left:auto}}
+
+/* V0.5.3: frame detection diagnostics, read-only and local. */
+.frameInfoBtn{background:#1b3650;color:#bbdafa;border:1px solid #375e81;border-radius:5px;padding:7px 11px;font-size:11px;white-space:nowrap;cursor:pointer}
+.frameInfoBtn:hover{background:#285279}
+.frameModalPanel{width:min(790px,94vw);max-height:82vh;display:flex;flex-direction:column}
+.frameDetails{overflow-y:auto;max-height:55vh;border:1px solid #3b4b61;border-radius:7px}
+.frameRow{padding:10px 12px;border-bottom:1px solid #304156;font-size:12px;line-height:1.6;display:flex;gap:14px;justify-content:space-between}
+.frameRow:last-child{border-bottom:0}
+.frameRow strong{color:#bce8ff}.frameRow small{display:block;color:#91a8bd;font-size:10px}
+.frameStatus{flex-shrink:0;font-size:10px;color:#75d8b3}.frameStatus.uncertain{color:#f3c78c}
+.modal p.frameCaution{font-size:11px;line-height:1.6}

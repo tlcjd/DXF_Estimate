@@ -377,6 +377,7 @@ async function watchDxfJob(job, filename, clickStartedAt){
       showDxfElapsed(`전체 ${totalTime} · ${info.cacheHit?'캐시 재사용':'DXF 읽기·캐시 '+parseTime}`);
       dxfProgress(`${info.cacheHit?'기존 디스크 캐시 재사용 (재분석 없음)':'층별 디스크 캐시 저장 완료'} · `+
         `${info.floors?.length||0}개 층/영역 · 원본 선 ${fmt(info.segments)}개`+
+        (info.frameDetection?.autoAdded?` · 도곽 자동인식 +${info.frameDetection.autoAdded}개`:'')+
         (info.notice?' · '+info.notice:'')+
         (info.unresolvedXrefs?.length?` · 미해결 XREF ${info.unresolvedXrefs.join(', ')}`:'')+
         (info.emptyBlockRefs?.length?` · 빈 블록 ${info.emptyBlockRefs.join(', ')}`:''));
@@ -421,10 +422,37 @@ async function openDxfPath(){
   finally{button.disabled=false}
 }
 
+async function showFrameInfo(){
+  const modal=$('frameModal'), container=$('frameDetails');
+  modal.classList.add('visible');container.replaceChildren();
+  $('frameSummary').textContent='도곽 판정 결과 불러오는 중…';
+  try{
+    const result=await request('/api/dxf/frames');
+    const added=result.added||[], unresolved=result.unresolved||[];
+    $('frameSummary').textContent=`기존 층 ${result.existing||0}개 · 자동 추가 ${result.autoAdded||0}개 · 사각 후보 ${result.rectCandidates||0}개 · 평면도 제목 ${result.planTitles||0}개 · 보류 ${result.unresolvedCount||0}개`;
+    function row(title,desc,status,uncertain=false){
+      const el=document.createElement('div');el.className='frameRow';
+      const left=document.createElement('div');
+      const strong=document.createElement('strong');strong.textContent=title;
+      const detail=document.createElement('small');detail.textContent=desc;
+      const right=document.createElement('span');right.className='frameStatus'+(uncertain?' uncertain':'');right.textContent=status;
+      left.append(strong,detail);el.append(left,right);container.append(el);
+    }
+    const old=result.existingFrames||[];
+    if(!added.length && !unresolved.length && !old.length)row('자동 판정 없음','기존 도곽 레이어 지정 결과만 사용했거나 평면도 제목을 찾지 못했습니다.','기존 유지');
+    for(const f of old)row((f.floors||[]).join(', '),`${f.title} · 기존 도곽 지정`, '기존 유지');
+    for(const f of added)row((f.floors||[]).join(', '),`${f.title} · ${f.source} · ${f.layer} · [${f.rect?.map(x=>Math.round(x)).join(', ')}]`,f.confidence||'자동');
+    for(const f of unresolved)row((f.floors||[]).join(', ')||f.title,`${f.title} · ${f.reason}`,'판정 보류',true);
+  }catch(e){$('frameSummary').textContent='도곽 결과를 읽을 수 없습니다: '+e.message;}
+}
+
 function bindUI(){
   $('dxfFile').addEventListener('change',e=>{$('dxfSelected').textContent=e.target.files[0]?.name||'선택된 DXF 없음'});
   $('btnOpenDxf').addEventListener('click',openDxf);
   $('btnOpenDxfPath').addEventListener('click',openDxfPath);
+  $('btnFrameInfo').addEventListener('click',showFrameInfo);
+  $('closeFrameInfo').addEventListener('click',()=> $('frameModal').classList.remove('visible'));
+  $('frameModal').addEventListener('click',e=>{if(e.target===$('frameModal'))$('frameModal').classList.remove('visible')});
   $('dxfLocalPath').addEventListener('keydown',e=>{if(e.key==='Enter')openDxfPath()});
   $('btnScan').addEventListener('click',()=>scan($('rootInput').value));
   $('rootInput').addEventListener('keydown',e=>{if(e.key==='Enter')scan(e.target.value)});
