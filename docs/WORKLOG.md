@@ -14,6 +14,46 @@ Codex·Claude가 **교대로** 작업하면서 다음 작업자에게 넘기는 
 
 ---
 
+## 2026-10-30 · Codex · UI·Ctrl 레이어 단독 표시 검토
+
+**한 일**
+- 사용자 요청으로 Claude 작업을 검토. 검토 기준은 `deca9a1`이며, Ctrl 기능은 `0407a82`, DXF 열기 통합은 `bf96823`.
+- 실제 실행 폴더와 저장소의 `file_dialog.py`, `server.py` SHA-256 일치 확인.
+- 실행 폴더의 `app.js`, `index.html`, `style.css`에는 검토 기준 커밋보다 추가된 재시작 확인창 변경이 있음.
+  차이는 버튼·확인창·CSS 및 `location.reload()` 연결이며 Ctrl 기능 코드는 동일. 실행 폴더를 덮어쓰지 않음.
+- 프로그램 코드 수정 없음. 검토 기록만 추가.
+
+**발견 사항 — 다음 수정 대상**
+- [P2] 입력칸·선택칸 사용 후 Ctrl 단독 표시가 동작하지 않을 수 있음.
+  - 위치: `web_trial/static/app.js`의 canvasWrap `pointerdown`(609행) 및 Ctrl `keydown`(620~624행), 검토 커밋 기준.
+  - 재현 경로: 레이어 검색칸 또는 층 선택칸에 포커스 → 도면 선 클릭 → Ctrl 누르기.
+  - 도면의 pointerdown이 `preventDefault()`를 호출하고 명시적인 포커스 이동도 하지 않아 기존 입력칸 포커스가 남는다.
+    이때 Ctrl keydown의 target은 입력칸이며, 입력칸 제외 조건으로 `setSolo()`가 실행되지 않는다.
+    기본 선택 상태에서 선을 골라도 Ctrl 보기만 작동하지 않아 사용자가 간헐적 실패로 느낄 수 있다.
+  - 권장 수정: 도면 조작 시 도면 영역으로 포커스를 옮기거나 기존 입력 포커스를 해제하되, 실제 입력 중의 Ctrl 동작 제외는 유지.
+  - 실제 app.js를 Node VM으로 실행한 모의 이벤트 검사에서 입력 target이면 `ctrlDown=true`, `solo=null`임을 확인.
+    실제 브라우저의 포커스 이동을 포함한 수동 재현은 미실시이므로 다음 작업자가 브라우저에서 확인할 것.
+- 낮은 우선순위 참고: 좌우 Ctrl을 함께 누른 뒤 한쪽만 떼면 다른 Ctrl이 눌린 상태여도 단독 보기가 해제됨
+  (`keyup`에서 `ctrlKey` 확인 없이 종료). 모의 이벤트 검사로 확인.
+
+**검증한 것**
+- 저장소 지정 회귀 테스트 전부 PASS: `test_auto_frames`, `test_auto_mixed_v056`, `test_cache_controls`,
+  `test_dxf_import`, `test_large_cache`, `test_file_browse`, `unittest web_trial.test_browser_window web_trial.test_read_log`.
+- Python 3.13.12 / ezdxf 1.4.4. 임시 폴더는 로컬 확인용 `source/.test-temp`, HTTP 테스트는 소켓 권한 확장 실행.
+- 실제 JS 코드의 모의 DOM 이벤트 검사: 일반 Ctrl → WAL만 표시, 키 해제 → 기존 숨김 보존, blur → 해제 확인.
+- 선·문자·채움·선택의 레이어 필터가 동일 규칙을 사용하는 점을 코드에서 확인.
+
+**검증 못 한 것 / 주의**
+- 실제 Windows 앱 창의 화면·포커스·파일 선택 창 수동 검사, WebGL GPU 화면, 현장 대형 DXF 재분석은 미실시.
+- 기존 Python 테스트는 Ctrl 키·포커스 동작의 회귀를 검사하지 않음. UI 회귀 검사를 추가하는 것이 좋음.
+- 실행 폴더는 변경하지 않음. 이번 변경은 문서뿐이므로 프로그램 파일 재반영 불필요.
+
+**다음 작업자에게**
+- 위 포커스 경로를 브라우저에서 재현하고 확인되면 작은 UI 수정으로 처리할 것. 이번 검토에서 수정하지 않았음.
+- 이후 작업 기록은 이 `docs/WORKLOG.md`를 기준으로 사용. 초기 확인 때 만든 로컬 미추적 `HANDOFF.md`는 최신 기록이 아님.
+
+---
+
 ## 2026-10-30 · Claude · READ-ONLY 표시 제거, 재시작 버튼
 
 **한 일**
