@@ -14,6 +14,18 @@ Codex·Claude가 **교대로** 작업하면서 다음 작업자에게 넘기는 
 
 ---
 
+## 2026-10-30 · Claude · READ-ONLY 표시 제거, 재시작 버튼
+
+**한 일**
+- `index.html`: 상단 `.topTag`(READ-ONLY) 제거 → `#btnRestart`(재시작). 확인 창 `#restartModal`(`[취소] #btnRestartCancel`, `[재시작] #btnRestartConfirm`) 추가.
+- `app.js`(bindUI): 열면 `#btnRestartConfirm`에 포커스(Enter로 실행), 취소·바깥 클릭·Esc(기존 공통 처리)로 닫힘, 재시작은 `location.reload()`.
+- `style.css`: `.confirmModal`, `.modalActions` 추가, 쓰지 않는 `.topTag` 제거.
+
+**검증한 것**: 열림·포커스·취소·Esc·Enter 새로고침 후 도면 재로드 확인. 서버 코드 변경 없음.
+**주의**: 재시작은 화면 새로고침만 함. 서버(Python) 코드가 바뀌면 bat 재실행 필요. 사용자가 이후 테스트는 직접 하겠다고 함.
+
+---
+
 ## 2026-10-30 · Claude · 원본 프로그램 분석 → 전환 로드맵 작성
 
 **한 일**

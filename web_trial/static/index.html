@@ -19,6 +19,7 @@
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 4l8.5 4.5L12 13 3.5 8.5z"/><path d="M3.5 12.5L12 17l8.5-4.5M3.5 16.5L12 21l8.5-4.5"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M10 7V4.5h4V7M6.5 7l1 13h9l1-13M10.5 11v5M13.5 11v5"/></symbol>
+  <symbol id="i-restart" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4v4h4"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
 </svg>
 <div class="shell">
@@ -31,7 +32,7 @@
     </div>
     <div class="topRight">
       <div class="statusPill"><span class="pulse"></span><span id="statusTitle">데이터 준비</span></div>
-      <span class="topTag" title="원본 DXF와 기존 캐시는 수정하지 않습니다">READ-ONLY</span>
+      <button id="btnRestart" class="btn subtle" title="프로그램 화면을 새로 고칩니다"><svg class="ic"><use href="#i-restart"/></svg>재시작</button>
       <button id="btnHelp" class="iconBtn" title="사용 안내" aria-label="사용 안내"><svg class="ic"><use href="#i-help"/></svg></button>
     </div>
   </header>
@@ -124,5 +125,6 @@
 </div>
 
 <div class="modalBackdrop" id="helpModal"><div class="modal"><div class="modalHead"><strong>오프라인 웹 뷰어 시험판</strong><button id="closeHelp" class="iconBtn" aria-label="닫기"><svg class="ic"><use href="#i-x"/></svg></button></div><p>DXF 파일을 직접 읽거나 기존 2단 원본 벡터 캐시를 표시하는 웹 시험판입니다. 인터넷·외부 서버는 사용하지 않습니다.</p><p><b>휠</b> 확대/축소 · <b>드래그</b> 이동 · <b>클릭</b> 선분 정보 · <b>Ctrl</b>(누르고 있는 동안) 선택한 선분의 레이어만 표시 · <b>F</b> 전체 보기. WebGL2/Canvas2D를 변경해 성능 차이를 확인하세요.</p><p>DXF 직접 읽기는 층별 로컬 캐시로 저장해 재사용하지만 CAD COM 실시간 연동, 실 편집, 프로젝트 저장은 이번 <b>읽기 전용 PoC 범위 밖</b>입니다. 원본 데스크톱 프로그램은 그대로 실행할 수 있습니다.</p><button id="closeHelp2" class="btn primary block">확인</button></div></div>
+<div class="modalBackdrop" id="restartModal"><div class="modal confirmModal" role="alertdialog" aria-labelledby="restartTitle" aria-describedby="restartDesc"><div class="modalHead"><strong id="restartTitle">재시작</strong></div><p id="restartDesc">프로그램 화면을 새로 고칩니다. 재시작할까요?</p><div class="modalActions"><button id="btnRestartCancel" class="btn">취소</button><button id="btnRestartConfirm" class="btn primary">재시작</button></div></div></div>
 <div class="modalBackdrop" id="frameModal"><div class="modal frameModalPanel"><div class="modalHead"><strong>도곽 자동인식 결과</strong><button id="closeFrameInfo" class="iconBtn" aria-label="닫기"><svg class="ic"><use href="#i-x"/></svg></button></div><p id="frameSummary" class="frameSummary">DXF를 먼저 읽어주세요.</p><div id="frameDetails" class="frameDetails"></div><p class="frameCaution">기존 지정 도곽을 기본 유지합니다. 지정이 없어도 제목·사각형을 찾아 층을 구성하며 같은 층의 다른 도면 후보는 아래에서 선택할 수 있습니다. 추정 도곽은 확인이 필요합니다.</p></div></div>
 <script src="/app.js"></script></body></html>

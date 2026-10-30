@@ -78,8 +78,6 @@ select option{background:#171c24}
   background:var(--panel-2);border:1px solid var(--line);color:var(--text-2);font-size:11px;max-width:300px}
 .statusPill span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px var(--good-soft);flex-shrink:0}
-.topTag{height:24px;display:inline-flex;align-items:center;padding:0 8px;border-radius:5px;background:var(--good-soft);
-  color:var(--good);font-weight:700;letter-spacing:.8px;font-size:9.5px}
 
 /* ---------- DXF bar ---------- */
 .dxfbar{min-height:50px;flex-shrink:0;display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:9px 16px;
@@ -230,6 +228,11 @@ input[type=range]{accent-color:var(--accent);width:80px}
 .modal{width:min(500px,90vw);background:var(--panel);border:1px solid var(--line-2);padding:18px 20px 20px;box-shadow:0 24px 70px #000a;border-radius:12px}
 .modalHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .modalHead strong{font-size:15px}
+.confirmModal{width:min(340px,90vw);padding:18px 20px 16px}
+.confirmModal p{margin:10px 0 16px}
+.modalActions{display:flex;justify-content:flex-end;gap:8px}
+.modalActions .btn{min-width:76px;justify-content:center}
+.modalActions .btn.primary:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .modal p{font-size:12px;color:var(--text-2);line-height:1.8;margin:12px 0;word-break:keep-all}
 .modal b{color:var(--text)}
 .frameModalPanel{width:min(860px,94vw);max-height:82vh;display:flex;flex-direction:column}

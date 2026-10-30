@@ -604,6 +604,11 @@ function bindUI(){
   $('btnGray').addEventListener('click',()=>{state.gray=!state.gray;$('btnGray').classList.toggle('active',state.gray);$('btnGray').querySelector('span').textContent=state.gray?'회색':'원색';scheduleDraw()});
   $('btnText').addEventListener('click',()=>{state.showText=!state.showText;$('btnText').classList.toggle('active',state.showText);scheduleDraw()});
   $('btnFills').addEventListener('click',()=>{state.showFills=!state.showFills;$('btnFills').classList.toggle('active',state.showFills);scheduleDraw()});
+  const restart=$('restartModal');
+  $('btnRestart').addEventListener('click',()=>{restart.classList.add('visible');$('btnRestartConfirm').focus()});
+  $('btnRestartCancel').addEventListener('click',()=>restart.classList.remove('visible'));
+  restart.addEventListener('click',e=>{if(e.target===restart)restart.classList.remove('visible')});
+  $('btnRestartConfirm').addEventListener('click',()=>location.reload());
   const modal=$('helpModal');$('btnHelp').onclick=()=>modal.classList.add('visible');$('closeHelp').onclick=$('closeHelp2').onclick=()=>modal.classList.remove('visible');
   const wrap=$('canvasWrap');
   wrap.addEventListener('pointerdown',e=>{if(e.button!==0&&e.button!==1)return;e.preventDefault();wrap.setPointerCapture(e.pointerId);state.drag={x:e.clientX,y:e.clientY,tx:state.tx,ty:state.ty,dist:0};wrap.classList.add('dragging')});
