@@ -11,6 +11,7 @@ import tempfile
 import uuid
 import traceback
 import gzip
+import hashlib
 import json
 import math
 import os
@@ -29,6 +30,8 @@ ROOT = Path(__file__).resolve().parent
 APP_ROOT = ROOT.parent
 STATIC = ROOT / 'static'
 if str(APP_ROOT) not in sys.path: sys.path.insert(0, str(APP_ROOT))
+from web_trial.disk_cache import (CACHE_ROOT, upload_signature, signature_for_path,
+    load_index, latest_index, write_cache, floor_scene, floor_order, pick_disk)
 MAX_CACHE_FILES = 350
 MAX_CACHE_BYTES = 1024 * 1024 * 1024
 
@@ -106,12 +109,20 @@ class Catalog:
         self.scene = None
         self.scene_key = None
         self.direct_payload = None
+        self.direct_index = None
         self.direct_title = ''
 
-    def set_direct(self, payload, title):
+    def set_direct_cache(self, index):
+        # Restore the last selected DXF across server restarts.
+        from web_trial import disk_cache as dc
+        try:
+            dc.CACHE_ROOT.mkdir(parents=True,exist_ok=True)
+            (dc.CACHE_ROOT/'last_opened.txt').write_text(index['signature'],encoding='ascii')
+        except (OSError,KeyError):pass
         with self.lock:
-            self.direct_payload = payload
-            self.direct_title = str(title)
+            self.direct_payload = None
+            self.direct_index = index
+            self.direct_title = str(index.get('title') or '')
             self.scene = None
             self.scene_key = None
 
@@ -133,9 +144,7 @@ class Catalog:
     def payload(self, id_):
         with self.lock:
             if id_ == 'direct':
-                if self.direct_payload is None:
-                    raise ValueError('아직 DXF를 읽지 않았습니다.')
-                return self.direct_payload
+                raise ValueError('직접 DXF의 벡터는 층별 디스크 캐시에서 읽습니다.')
             path = self.paths.get(id_)
             if not path:
                 raise ValueError('목록에서 원본 벡터 캐시를 선택하세요.')
@@ -179,6 +188,16 @@ class Catalog:
         return {'id': None, 'skipped':len(rejected), 'skippedExamples':rejected[:3]}
 
     def floors(self, id_):
+        if id_ == 'direct':
+            with self.lock:
+                index=self.direct_index
+            if not index:raise ValueError('DXF 캐시가 없습니다. DXF를 먼저 읽으세요.')
+            return {'name':index['title'],'version':index['cacheVersion'],
+                    'source':index['title'], 'diskCache':True,
+                    'spatialFallback':index.get('spatialFallback',False),
+                    'floors':[{'name':f['name'],'segments':f['segments'],
+                              'texts':f['texts'],'fills':f['fills']}
+                              for f in index['floors']]}
         data = self.payload(id_)
         floors = data.get('floors') or {}
         title = self.direct_title if id_ == 'direct' else self.cache_path.name
@@ -186,12 +205,17 @@ class Catalog:
                 'source':data.get('source_path') or '',
                 'floors':[{'name':str(name), 'segments':len(v.get('segments') or [])+len(v.get('annotation_segments') or []),
                            'texts':len(v.get('texts') or []), 'fills':len(v.get('fills') or [])}
-                          for name,v in sorted(floors.items(), key=lambda a:a[0]) if isinstance(v, dict)]}
+                          for name,v in sorted(floors.items(), key=lambda a:floor_order(a[0])) if isinstance(v, dict)]}
 
     def prepare_scene(self, id_, floor):
         with self.lock:
             key = (id_,floor)
             if self.scene_key == key and self.scene is not None:
+                return self.scene
+            if id_ == 'direct':
+                if not self.direct_index:raise ValueError('DXF 캐시를 먼저 읽으세요.')
+                self.scene=floor_scene(self.direct_index, floor)
+                self.scene_key=key
                 return self.scene
             data = self.payload(id_)
             rawfloor = (data.get('floors') or {}).get(floor)
@@ -341,14 +365,23 @@ class DXFJobs:
         self.lock = threading.RLock()
         self.job = None
 
-    def begin(self, source: Path, title: str, remove_after: bool):
+    def begin(self, source: Path, title: str, remove_after: bool, key: str):
         with self.lock:
             if self.job and self.job.get('state') == 'running':
                 raise ValueError('다른 DXF를 읽는 중입니다. 완료 후 다시 시도하세요.')
+            existing=load_index(key)
+            if existing:
+                CATALOG.set_direct_cache(existing)
+                job={'id':uuid.uuid4().hex,'state':'done','message':'저장된 층별 캐시 재사용 · DXF 재분석 없음',
+                     'title':title,'stage':100,'error':'','result':dict(existing['stats'],cacheHit=True),
+                     'started':time.time()}
+                self.job=job
+                if remove_after:source.unlink(missing_ok=True)
+                return {'id':job['id']}
             job = {'id': uuid.uuid4().hex, 'state':'running', 'message':'DXF 읽기 준비',
                    'title':title,'stage':0,'error':'','result':None,'started':time.time()}
             self.job=job
-        threading.Thread(target=self._run,args=(job['id'],source,title,remove_after),daemon=True).start()
+        threading.Thread(target=self._run,args=(job['id'],source,title,remove_after,key),daemon=True).start()
         return {'id':job['id']}
 
     def update(self,id_,**kwargs):
@@ -362,11 +395,11 @@ class DXFJobs:
                 raise ValueError('작업 기록을 찾을 수 없습니다.')
             return dict(self.job)
 
-    def _run(self,id_,path,title,remove_after):
+    def _run(self,id_,path,title,remove_after,key):
         try:
-            payload, stats = import_dxf(path, title, lambda step,msg:self.update(id_,stage=step,message=msg))
-            CATALOG.set_direct(payload,title)
-            self.update(id_,state='done',stage=100,message='DXF 분석 및 층별 벡터 생성 완료',result=stats)
+            index, stats = import_dxf(path, title, key, lambda step,msg:self.update(id_,stage=step,message=msg))
+            CATALOG.set_direct_cache(index)
+            self.update(id_,state='done',stage=100,message='층별 디스크 캐시 저장 완료',result=stats)
         except Exception as exc:
             print('[DXF 읽기 실패]', traceback.format_exc(),flush=True)
             self.update(id_,state='error',message='DXF 읽기 실패',error=f'{type(exc).__name__}: {exc}')
@@ -378,85 +411,37 @@ class DXFJobs:
 DXF_JOBS = DXFJobs()
 
 
-def import_dxf(path:Path, title:str, progress=None):
-    """Reuse existing no-Qt CAD/DXF vector pipeline, without CAD COM or the desktop launcher."""
-    try:
-        import ezdxf
+def import_dxf(path:Path, title:str, key:str, progress=None):
+    """V0.5: existing DXF core -> crop per floor -> persisted binary sidecars.
+
+    The original DXF is read-only, and native CAD COM / Qt are not required.
+    """
+    try:import ezdxf
     except ImportError as exc:
-        raise RuntimeError('DXF 읽기에 ezdxf가 필요합니다. 사용 중인 Python에 python -m pip install ezdxf 를 설치하세요.') from exc
+        raise RuntimeError('DXF 읽기에는 ezdxf가 필요합니다. python -m pip install ezdxf') from exc
     from app.rooms.core import read_drawing_divisions, read_cad_background
-    from app.rooms.background_source_cache import build_floor_vectors, floor_frame_rects
-    tell = progress or (lambda step,msg:None)
+    from app.rooms.background_source_cache import floor_frame_rects
+    tell=progress or (lambda step,msg:None)
     tell(10,'DXF 파일 읽는 중')
-    doc=ezdxf.readfile(path)
-    msp=doc.modelspace()
-    tell(25,'도곽 및 층 제목 판정 중')
+    doc=ezdxf.readfile(path);msp=doc.modelspace()
+    tell(25,'평면도 도곽 및 층 제목 판정 중')
     frames=read_drawing_divisions(msp)
     rects=floor_frame_rects(frames)
     crops=list({tuple(v) for v in rects.values()})
-    tell(35,'블록·XCLIP·숨김 객체·선분 벡터 전개 중 (큰 도면은 시간이 걸릴 수 있습니다)')
-    segments, extra = read_cad_background(doc,crop_rects=crops or None)
+    tell(35,'기존 DXF 엔진으로 블록·XCLIP·선분 해석 중')
+    segments,extra=read_cad_background(doc,crop_rects=crops or None)
     annotations=extra.get('annotation_segments') or []
     texts=extra.get('texts') or []
     fills=extra.get('fills') or []
-    tell(80,'층별 벡터 분리 중')
-    floors = build_floor_vectors(segments,frames,texts,annotations,rooms=None,fills=fills) if rects else {}
-    # Non-standard DXF without our custom frame layer still needs a usable drawing view.
-    if not floors or not any((v.get('segments') or v.get('annotation_segments') or v.get('texts') or v.get('fills')) for v in floors.values()):
-        # 전체도면 좌표범위도 스트리밍으로 계산 (수백만 선의 좌표 배열 생성 방지).
-        min_x=min_y=float('inf')
-        max_x=max_y=float('-inf')
-        def absorb(x,y):
-            nonlocal min_x,min_y,max_x,max_y
-            x,y=float(x),float(y)
-            if not (math.isfinite(x) and math.isfinite(y)):return
-            min_x=min(min_x,x);max_x=max(max_x,x)
-            min_y=min(min_y,y);max_y=max(max_y,y)
-        for coll in (segments, annotations):
-            for seg in coll:
-                try:absorb(seg[0],seg[1]);absorb(seg[2],seg[3])
-                except (IndexError,ValueError,TypeError,OverflowError):pass
-        for text in texts:
-            try:absorb(text['x'],text['y'])
-            except (ValueError,TypeError,KeyError,OverflowError):pass
-        for fill in fills:
-            for pt in fill.get('points') or []:
-                try:absorb(pt[0],pt[1])
-                except (ValueError,TypeError,IndexError,OverflowError):pass
-        if not math.isfinite(min_x) or not math.isfinite(min_y):
-            raise ValueError('표시할 벡터 도형이 없습니다. DXF가 빈 파일이거나 외부참조가 미포함일 수 있습니다.')
-        rect=(min_x,min_y,max_x,max_y)
-        pad=max(100.0,(max(rect[2]-rect[0],rect[3]-rect[1]))*.01)
-        floors={'전체':{'crop_rect':(rect[0]-pad,rect[1]-pad,rect[2]+pad,rect[3]+pad),
-                        'crop_source':'all_geometry','segments':segments,
-                        'annotation_segments':annotations,'texts':texts,'fills':fills}}
-    # Warn for empty xref definitions: those need a bound or exported DXF from the CAD application.
-    empty_xref=[]
-    for block in doc.blocks:
-        try:
-            if bool(getattr(block,'is_xref',False)) and not len(block):empty_xref.append(block.name)
-        except Exception:pass
-    empty_ref_blocks=[]
-    for insert in msp.query('INSERT'):
-        try:
-            name=str(insert.dxf.name)
-            block=doc.blocks.get(name)
-            if block is not None and not len(block) and name not in empty_ref_blocks:
-                empty_ref_blocks.append(name)
-        except Exception:pass
     if not segments and not annotations:
-        raise ValueError('DXF에서 선분을 추출하지 못했습니다. 외부참조가 묶이지 않은 DXF인지 확인하세요.')
-    payload={'version':10,'cache_stage':2,'source_path':title,'floors':floors}
-    diag=extra.get('block_diagnostic') or {}
-    stats={'title':title,'floors':[{'name':name,'lines':len(v.get('segments') or [])+len(v.get('annotation_segments') or []),
-              'texts':len(v.get('texts') or []),'fills':len(v.get('fills') or [])}
-              for name,v in sorted(floors.items())],
-           'frames':len(frames),'segments':len(segments),'texts':len(texts),
-           'invisibleSkipped':diag.get('invisible_entity_skipped',0),
-           'xclips':diag.get('xclip_insert_count',0),'unresolvedXrefs':empty_xref[:20],
-           'emptyBlockRefs':empty_ref_blocks[:20]}
-    tell(95,'웹 도면 캐시 준비 중')
-    return payload,stats
+        raise ValueError('도면 선분이 없습니다. DXF에 외부참조가 포함되어 있는지 확인하세요.')
+    tell(80, f'층별 벡터 분할·디스크 저장 준비 · 원본 {len(segments)+len(annotations):,} 선분')
+    index=write_cache(key,title,path,frames,rects,segments,annotations,texts,fills,extra,tell)
+    stats=index['stats']
+    if index.get('spatialFallback'):
+        stats['notice']='평면도 도곽/층 제목을 찾지 못해 공간별 영역으로 나눴습니다. 층 이름은 자동 추측하지 않습니다.'
+    tell(100,'층별 디스크 캐시 저장 완료 · 웹은 선택한 층만 불러옵니다')
+    return index,stats
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
@@ -494,13 +479,14 @@ class Handler(BaseHTTPRequestHandler):
                 folder.mkdir(parents=True,exist_ok=True)
                 target=folder/(uuid.uuid4().hex+'.dxf')
                 try:
+                    digest=hashlib.blake2b(digest_size=24)
                     with target.open('wb') as f:
                         rest=length
                         while rest:
                             chunk=self.rfile.read(min(rest,1024*1024))
                             if not chunk:raise ValueError('파일 수신이 중단됐습니다.')
-                            f.write(chunk);rest-=len(chunk)
-                    result=DXF_JOBS.begin(target,filename,True)
+                            f.write(chunk);digest.update(chunk);rest-=len(chunk)
+                    result=DXF_JOBS.begin(target,filename,True,upload_signature(digest.hexdigest()))
                 except Exception:
                     target.unlink(missing_ok=True);raise
             else:
@@ -508,7 +494,7 @@ class Handler(BaseHTTPRequestHandler):
                 path=Path(raw.strip().strip('"')).expanduser()
                 if path.suffix.lower()!='.dxf' or not path.is_file():
                     raise ValueError('PC에 존재하는 .dxf 파일의 전체 경로를 입력하세요.')
-                result=DXF_JOBS.begin(path,path.name,False)
+                result=DXF_JOBS.begin(path,path.name,False,signature_for_path(path))
             self.respond(result,202)
         except Exception as exc:self.respond({'error':f'{type(exc).__name__}: {exc}'},400)
 
@@ -544,8 +530,13 @@ class Handler(BaseHTTPRequestHandler):
                 if p.path=='/api/texts':self.respond(sc['texts']);return
                 if p.path=='/api/fills':self.respond(sc['fills']);return
                 if p.path=='/api/pick':
-                    self.respond({'selected':pick(sc,clean_num(arg('x')),clean_num(arg('y')),
-                                                  {'hidden':set(arg('hidden').split('\x1f')),'tol':clean_num(arg('tol'),150)})});return
+                    x=clean_num(arg('x'));y=clean_num(arg('y'))
+                    hidden=set(arg('hidden').split('\x1f'));tol=max(5,min(1500,clean_num(arg('tol'),150)))
+                    if sc.get('_attrs_path'):
+                        found=pick_disk(sc,x,y,hidden,tol)
+                    else:
+                        found=pick(sc,x,y,{'hidden':hidden,'tol':tol})
+                    self.respond({'selected':found});return
             self.respond({'error':'없는 주소'},404)
         except Exception as exc:
             self.respond({'error':f'{type(exc).__name__}: {exc}'},400)
@@ -565,6 +556,11 @@ def main():
     else:
         existing=Path(r'D:\P\Estimate\DXF_견적프로그램 작성')
         root=str(existing) if existing.is_dir() else str(APP_ROOT)
+    # Restore newest completed DXF cache without needing the source DXF again.
+    recent=latest_index()
+    if recent:
+        CATALOG.set_direct_cache(recent)
+        print(f'[웹 DXF 캐시] 복원: {recent["title"]} · {len(recent["floors"])}개 층/영역')
     try:
         result=CATALOG.scan(root)
         print(f"[캐시] {root} / {len(result['files'])}개 발견")

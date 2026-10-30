@@ -12,3 +12,12 @@
 .dxfOpen:hover{background:#3291d5}
 #dxfJobStatus{margin-left:8px;color:#93a9bf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:1050px){#dxfJobStatus{display:none}.dxfSelected{max-width:160px}}
+
+/* V0.5: local direct-path read reduces copies of large DXFs. */
+.dxfbar { flex-wrap: wrap; align-content: center; row-gap: 8px; }
+.localOpen { display:flex;align-items:center;gap:8px;flex: 1 1 100%;min-width:0; }
+.localOpen label { color:#9fb8cd;font-size:11px;white-space:nowrap; }
+.localOpen input { flex:1;min-width:100px;max-width:520px;background:#122239;color:#e5f0ff;border:1px solid #344963;border-radius:6px;padding:7px 10px;font-size:12px; }
+.localOpen button {white-space:nowrap}
+
+.dxfbar { height:auto; min-height:91px; padding:8px 18px; }

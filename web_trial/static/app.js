@@ -53,7 +53,7 @@ async function chooseFile(){
     for(const f of result.floors){const option=document.createElement('option');option.textContent=f.name+' ('+fmt(f.segments)+')';option.value=f.name;select.appendChild(option)}
     if(!result.floors.length)throw new Error('저장된 층별 벡터가 없습니다. 원래 프로그램에서 CAD 도서읽기를 먼저 실행하세요.');
     $('drawingName').textContent=id==='demo'?'가상 주차장 샘플':(result.source?.split(/[\\/]/).pop() || result.name);
-    $('statusTitle').textContent=id==='demo'?'DEMO · 비교 시험 준비':id==='direct'?'DXF 직접읽기 완료 · 읽기 전용':'원본 캐시 연결 · 읽기 전용';
+    $('statusTitle').textContent=id==='demo'?'DEMO · 비교 시험 준비':id==='direct'?'층별 DXF 디스크 캐시 · 읽기 전용':'원본 캐시 연결 · 읽기 전용';
     await chooseFloor();
   }catch(e){message('캐시 선택 실패: '+e.message,true);alert('캐시 선택 실패: '+e.message)}
 }
@@ -350,6 +350,28 @@ function dxfProgress(text, error=false){
   const el=$('dxfJobStatus'); el.textContent=text; el.style.color=error?'#ff9999':'#9ebdd6';
 }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function watchDxfJob(job, filename){
+  for(;;){
+    const result=await request('/api/dxf/job?'+params({id:job.id}));
+    dxfProgress(result.message);busy(true,result.message);
+    if(result.state==='error')throw new Error(result.error||'DXF 변환 실패');
+    if(result.state==='done'){
+      state.importedTitle=filename;
+      const select=$('fileSelect');let opt=select.querySelector('option[value="direct"]');
+      if(!opt){opt=document.createElement('option');opt.value='direct';select.prepend(opt)}
+      opt.textContent='DXF 층별 캐시 · '+filename;select.value='direct';
+      busy(false);await chooseFile();
+      const info=result.result||{};
+      dxfProgress(`${info.cacheHit?'기존 디스크 캐시 재사용 (재분석 없음)':'층별 디스크 캐시 저장 완료'} · `+
+        `${info.floors?.length||0}개 층/영역 · 원본 선 ${fmt(info.segments)}개`+
+        (info.notice?' · '+info.notice:'')+
+        (info.unresolvedXrefs?.length?` · 미해결 XREF ${info.unresolvedXrefs.join(', ')}`:'')+
+        (info.emptyBlockRefs?.length?` · 빈 블록 ${info.emptyBlockRefs.join(', ')}`:''));
+      return;
+    }
+    await sleep(400);
+  }
+}
 async function openDxf(){
   const file=$('dxfFile').files[0];
   if(!file){dxfProgress('먼저 .dxf 파일을 선택하세요.',true);return}
@@ -361,25 +383,21 @@ async function openDxf(){
       method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(file.name)},body:file
     });
     const job=await response.json();if(!response.ok)throw new Error(job.error||`HTTP ${response.status}`);
-    for(;;){
-      const result=await request('/api/dxf/job?'+params({id:job.id}));
-      dxfProgress(result.message);busy(true,result.message);
-      if(result.state==='error')throw new Error(result.error||'DXF 변환 실패');
-      if(result.state==='done'){
-        state.importedTitle=file.name;
-        const select=$('fileSelect');
-        let opt=select.querySelector('option[value="direct"]');
-        if(!opt){opt=document.createElement('option');opt.value='direct';select.prepend(opt)}
-        opt.textContent='DXF 직접읽기 · '+file.name;select.value='direct';
-        busy(false);await chooseFile();
-        const info=result.result||{};
-        dxfProgress(`완료 · ${info.floors?.length||0}개 층 · 선 ${fmt(info.segments)}개`+
-          (info.unresolvedXrefs?.length?` · 미해결 XREF ${info.unresolvedXrefs.join(', ')}`:'')+
-          (info.emptyBlockRefs?.length?` · 빈 블록 ${info.emptyBlockRefs.join(', ')}`:''));
-        return;
-      }
-      await sleep(400);
-    }
+    await watchDxfJob(job,file.name);
+  }catch(e){busy(false);dxfProgress('실패: '+e.message,true);message('DXF 읽기 실패: '+e.message,true)}
+  finally{button.disabled=false}
+}
+async function openDxfPath(){
+  const pathname=$('dxfLocalPath').value.trim().replace(/^"|"$/g,'');
+  if(!pathname.toLowerCase().endsWith('.dxf')){dxfProgress('PC의 DXF 파일 전체 경로를 입력하세요.',true);return}
+  const button=$('btnOpenDxfPath');button.disabled=true;
+  busy(true,'로컬 DXF 읽기 준비');dxfProgress('원본을 복사하지 않고 PC 경로에서 직접 분석합니다.');
+  try{
+    const response=await fetch('/api/dxf/open-path',{
+      method:'POST',headers:{'Content-Type':'application/octet-stream'},body:new TextEncoder().encode(pathname)
+    });
+    const job=await response.json();if(!response.ok)throw new Error(job.error||`HTTP ${response.status}`);
+    await watchDxfJob(job,pathname.split(/[\\/]/).pop());
   }catch(e){busy(false);dxfProgress('실패: '+e.message,true);message('DXF 읽기 실패: '+e.message,true)}
   finally{button.disabled=false}
 }
@@ -387,6 +405,8 @@ async function openDxf(){
 function bindUI(){
   $('dxfFile').addEventListener('change',e=>{$('dxfSelected').textContent=e.target.files[0]?.name||'선택된 DXF 없음'});
   $('btnOpenDxf').addEventListener('click',openDxf);
+  $('btnOpenDxfPath').addEventListener('click',openDxfPath);
+  $('dxfLocalPath').addEventListener('keydown',e=>{if(e.key==='Enter')openDxfPath()});
   $('btnScan').addEventListener('click',()=>scan($('rootInput').value));
   $('rootInput').addEventListener('keydown',e=>{if(e.key==='Enter')scan(e.target.value)});
   $('fileSelect').addEventListener('change',chooseFile);
@@ -426,6 +446,7 @@ function bindUI(){
 async function main(){
   bindUI();updateBackgroundButton();initGL();selectRenderer(state.gl?'webgl':'canvas');
   const c=await request('/api/config');$('rootInput').value=c.root||'';
+  state.importedTitle=c.direct||'';
   await scan(c.root||'',true);
 }
 main().catch(e=>{busy(false);message(e.message,true);console.error(e)});
