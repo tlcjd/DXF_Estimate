@@ -496,8 +496,13 @@ async function showFrameInfo(){
   try{
     const result=await request('/api/dxf/frames');
     const added=result.added||[], unresolved=result.unresolved||[], alternatives=result.alternatives||[];
-    $('frameSummary').textContent=`기존 층 ${result.existing||0}개 · 자동 추가 ${result.autoAdded||0}개 · 사각 후보 ${result.rectCandidates||0}개 · 평면도 제목 ${result.planTitles||0}개 · 동일 층 다른 도면 ${result.alternativeCount||0}개 · 보류 ${result.unresolvedCount||0}개`;
-    function row(title,desc,status,uncertain=false){
+    const summary=[['기존 층',result.existing],['자동 추가',result.autoAdded],['사각 후보',result.rectCandidates],['평면도 제목',result.planTitles],['동일 층 다른 도면',result.alternativeCount],['보류',result.unresolvedCount]];
+    $('frameSummary').replaceChildren(...summary.map(([k,v])=>{const chip=document.createElement('span');chip.className='frameChip';const b=document.createElement('b');b.textContent=fmt(v);chip.append(k+' ',b);return chip}));
+    function section(title,count){
+      const el=document.createElement('div');el.className='frameSection';el.textContent=title;
+      const n=document.createElement('span');n.textContent=fmt(count);el.append(n);container.append(el);
+    }
+    function row(title,desc,status,uncertain=/추정|확인|보류/.test(status)){
       const el=document.createElement('div');el.className='frameRow';
       const left=document.createElement('div');
       const strong=document.createElement('strong');strong.textContent=title;
@@ -507,8 +512,10 @@ async function showFrameInfo(){
     }
     const old=result.existingFrames||[];
     if(!added.length && !unresolved.length && !old.length)row('자동 판정 없음','기존 도곽 레이어 지정 결과만 사용했거나 평면도 제목을 찾지 못했습니다.','기존 유지');
+    if(old.length||added.length)section('층 도곽',old.length+added.length);
     for(const f of old)row((f.floors||[]).join(', '),`${f.title} · 기존 도곽 지정`, '기존 유지');
     for(const f of added)row((f.floors||[]).join(', '),`${f.title} · ${f.source} · ${f.layer} · [${f.rect?.map(x=>Math.round(x)).join(', ')}]`,f.confidence||'자동');
+    if(result.manualSelections?.length)section('사용자 확정',result.manualSelections.length);
     for(const f of result.manualSelections||[]){
       const floor=f.floors?.[0];if(!floor)continue;
       const el=document.createElement('div');el.className='frameRow';
@@ -519,6 +526,7 @@ async function showFrameInfo(){
       button.addEventListener('click',()=>resetDetectedFrame(floor));
       left.append(label,detail);el.append(left,button);container.append(el);
     }
+    if(alternatives.length)section('같은 층 다른 도면 후보',alternatives.length);
     for(const f of alternatives){
       const floors=f.floors||[];
       const el=document.createElement('div');el.className='frameRow';
@@ -531,6 +539,7 @@ async function showFrameInfo(){
       button.addEventListener('click',()=>chooseDetectedFrame(f));
       el.append(left,button);container.append(el);
     }
+    if(unresolved.length)section('판정 보류',unresolved.length);
     for(const f of unresolved)row((f.floors||[]).join(', ')||f.title,`${f.title} · ${f.reason}`,'판정 보류',true);
   }catch(e){$('frameSummary').textContent='도곽 결과를 읽을 수 없습니다: '+e.message;}
 }

@@ -50,10 +50,6 @@
       <label for="dxfLocalPath" class="pathField"><svg class="ic"><use href="#i-folder"/></svg><input type="text" id="dxfLocalPath" placeholder="큰 DXF는 PC 경로로 직접 열기 · D:\도면\평면도.dxf" autocomplete="off"/></label>
       <button id="btnOpenDxfPath" class="btn primary">경로 열기</button>
     </div>
-    <div class="jobStatus">
-      <span id="dxfJobStatus">DXF 분석 후 층별 디스크 캐시 저장 · 재사용</span>
-      <span id="dxfElapsed" class="dxfElapsed" aria-live="polite">소요시간 —</span>
-    </div>
     <div class="dxfGroup diag">
       <button id="btnFrameInfo" class="btn subtle" title="자동 도곽 판정 목록과 보류 사유 확인"><svg class="ic"><use href="#i-frame"/></svg><span>도곽 판정</span></button>
       <button id="btnCopyLog" class="btn subtle" title="읽기 진행 기록·층별 결과·오류 상세를 클립보드에 복사"><svg class="ic"><use href="#i-copy"/></svg><span>로그 복사</span></button>
@@ -101,6 +97,7 @@
       </div>
       <div class="viewportBottom">
         <span id="coords" class="mono">X: — · Y: —</span>
+        <div class="jobStatus" title="DXF 읽기 상태"><svg class="ic"><use href="#i-clock"/></svg><span id="dxfElapsed" class="dxfElapsed" aria-live="polite">소요시간 —</span><span id="dxfJobStatus">DXF 분석 후 층별 디스크 캐시 저장 · 재사용</span></div>
         <span id="modeStatus">DXF / 층별 디스크 캐시 · 읽기 전용</span>
         <div class="metrics"><span id="lineCount">선 0</span><span class="metaSep"></span><span id="zoomLevel">100%</span><span class="metaSep"></span><span id="renderTime">렌더 —</span><span class="metaSep"></span><span id="performance">—</span></div>
       </div>

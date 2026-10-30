@@ -14,6 +14,34 @@ Codex·Claude가 **교대로** 작업하면서 다음 작업자에게 넘기는 
 
 ---
 
+## 2026-10-30 · Claude · UI 2차 정리 + 테스트 폴더 반영 bat
+
+**한 일**
+- 사용자가 실제 실행·테스트하는 폴더가 `D:\P\Estimate\DXF_견적프로그램 작성\@@테스트 웹`임을 확인(저장소와 별도, git 관리 안 함).
+  저장소 최신본을 그 폴더로 복사하는 `테스트폴더로_반영.bat` 추가(캐시·설정·zip·데스크톱 파일은 건드리지 않음). AGENTS.md에 규칙 명시.
+- 실제 현장 도면(효제동 평면변경안1.dxf 캐시)을 띄워 UI 2차 정리. **기능 추가·삭제 없음.**
+  - `#dxfJobStatus`, `#dxfElapsed`를 상단 DXF 바에서 하단 상태바(`.jobStatus`)로 이동. DXF 바는 경로 입력칸이 넓어지고 진단 버튼은 오른쪽 정렬.
+  - 1680px 이하에서는 고정 문구 `#modeStatus`와 중복 표시인 `#renderTime`을 숨겨 상태 문구 공간 확보(`#performance`에 같은 ms 포함).
+  - `.gridHint`(CAD VECTORS · LOCAL DXF)가 도면 제목을 가려 `display:none`(요소와 app.js 코드는 유지).
+  - 도곽 판정 창: `showFrameInfo()`에서 요약을 칩(`.frameChip`)으로, 목록에 그룹 제목(`.frameSection`) 추가. `row()`의 상태가 `추정|확인|보류`를 포함하면 주황 배지.
+  - 캐시 폴더 접기 화살표를 CSS 셰브런으로 교체.
+
+**바뀐 파일**: `web_trial/static/index.html`, `style.css`, `app.js`(showFrameInfo 표시 부분만), `README.md`, `AGENTS.md`, `테스트폴더로_반영.bat`
+
+**검증한 것**
+- 테스트 7종 PASS. 단 `test_dxf_import`가 연속 실행 중 한 번 Windows `PermissionError [WinError 5]`(임시 파일 잠김)로 실패 → 단독 재실행 시 PASS. UI 변경과 무관해 보이나 반복되면 테스트의 임시 폴더 정리 부분 확인 필요.
+- 테스트 폴더에서 서버 실행: 1440px·1100px 화면, 도곽 판정 창(층 도곽 8 / 다른 도면 후보 47), 흰색 배경, 선분 선택, 콘솔 오류 없음. app.js가 쓰는 id 모두 HTML에 존재.
+- `테스트폴더로_반영.bat` 실행 후 테스트 폴더와 저장소 `app/`·`web_trial/`·README 27개 파일 일치 확인.
+
+**검증 못 한 것 / 주의**
+- 실제 DXF 새로 읽기(진행률 막대, 하단 상태 문구 갱신)와 `이 도곽 선택`·`자동으로 복귀` 클릭 후 재분석 흐름은 실행하지 않음.
+- WebGL 모드는 여전히 미확인(확인 환경에서 Canvas2D만 가능).
+
+**다음 작업자에게**
+- Codex는 테스트 폴더에 접근할 수 없으니, push 후 WORKLOG에 "테스트 폴더 반영 필요"를 적어 두면 사용자가 bat로 반영함.
+
+---
+
 ## 2026-10-30 · Claude · Git 저장소 구성 + V0.5.6 UI 정리
 
 **한 일**
